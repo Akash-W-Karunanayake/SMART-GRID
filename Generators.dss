@@ -1,0 +1,131 @@
+// ============================================================================
+// CHUNNAKAM GRID - DISPATCHABLE GENERATORS
+// ============================================================================
+// Generation assets connected to the Chunnakam grid:
+// 1. UJPS (Uthuru Janani Power Station): 24 MW thermal (3 x 8 MW HFO)
+// 2. Wind Farm: 20 MW (connected to F11)
+//
+// From actual F05 data: Average export 8.74 MW, peak 23.62 MW
+// From actual F11 data: Net export 1.97 MW (wind + solar - load)
+// ============================================================================
+
+// ----------------------------------------------------------------------------
+// UJPS - UTHURU JANANI POWER STATION (24 MW Thermal)
+// ----------------------------------------------------------------------------
+// Three 8 MW heavy fuel oil (HFO) reciprocating engines
+// Connected to F05 feeder
+// Provides base load and peaking capacity for Jaffna Peninsula
+
+// Generator 1 - 8 MW HFO Engine
+New Generator.UJPS_Gen1
+~   bus1=F05_UJPS.1.2.3
+~   phases=3
+~   conn=wye
+~   kV=33                      // Direct 33kV connection
+~   kW=8000                    // 8 MW rated
+~   pf=0.85                    // Operating power factor
+~   model=1                    // Constant P, Q model
+~   Vminpu=0.95
+~   Vmaxpu=1.05
+~   H=3.5                      // Inertia constant (s)
+~   Xdp=0.20                   // Transient reactance (pu)
+~   Xdpp=0.15                  // Subtransient reactance (pu)
+~   daily=UJPS_20250801
+~   status=variable
+
+// Generator 2 - 8 MW HFO Engine
+New Generator.UJPS_Gen2
+~   bus1=F05_UJPS.1.2.3
+~   phases=3
+~   conn=wye
+~   kV=33
+~   kW=8000
+~   pf=0.85
+~   model=1
+~   Vminpu=0.95
+~   Vmaxpu=1.05
+~   H=3.5
+~   Xdp=0.20
+~   Xdpp=0.15
+~   daily=UJPS_20250801
+~   status=variable
+
+// Generator 3 - 8 MW HFO Engine
+New Generator.UJPS_Gen3
+~   bus1=F05_UJPS.1.2.3
+~   phases=3
+~   conn=wye
+~   kV=33
+~   kW=8000
+~   pf=0.85
+~   model=1
+~   Vminpu=0.95
+~   Vmaxpu=1.05
+~   H=3.5
+~   Xdp=0.20
+~   Xdpp=0.15
+~   daily=UJPS_20250801
+~   status=variable
+
+// ----------------------------------------------------------------------------
+// WIND FARM - 20 MW (Connected to F11)
+// ----------------------------------------------------------------------------
+// Located near Jaffna, connected via spur from F11
+// Variable output based on wind conditions
+// Jaffna has good wind resource during southwest monsoon (May-September)
+
+New Generator.WindFarm
+~   bus1=F11_WindFarm.1.2.3
+~   phases=3
+~   conn=wye
+~   kV=33                      // 33kV connection
+~   kW=20000                   // 20 MW rated
+~   pf=0.90                    // Operating power factor
+~   model=1                    // Constant P, Q (dispatch follows wind)
+~   Vminpu=0.95
+~   Vmaxpu=1.05
+~   H=5.0                      // Higher inertia (turbine + gearbox)
+~   Xdp=0.25                   // Transient reactance
+~   Xdpp=0.18                  // Subtransient reactance
+~   daily=Wind_20250801
+~   status=variable
+
+// ============================================================================
+// GENERATOR DISPATCH NOTES
+// ============================================================================
+// 
+// Real-time dispatch follows this priority (based on actual data):
+// 1. Wind: Must-take (variable, follows wind)
+// 2. Solar PV: Must-take (variable, follows irradiance)
+// 3. UJPS Thermal: Dispatched to meet residual demand
+//    - Residual = Load - Wind - Solar
+//    - When solar is high (midday), UJPS reduces output
+//    - When solar is low (night/evening), UJPS increases output
+//
+// From actual F05 data:
+// - Night (22:00-05:00): UJPS output ~11.6 MW (moderate, base load)
+// - Morning (06:00-09:00): UJPS output ~5 MW (solar ramping up)
+// - Solar peak (10:00-14:00): UJPS output ~2 MW (minimum, solar dominant)
+// - Evening peak (17:00-21:00): UJPS output ~19 MW (high, no solar)
+//
+// Net export on F05 occurs when UJPS > local F05 load
+// ============================================================================
+
+// ============================================================================
+// GENERATION SUMMARY
+// ============================================================================
+// Source           Capacity (MW)    Type        Dispatch
+// UJPS Gen1        8               Thermal     Load following
+// UJPS Gen2        8               Thermal     Load following
+// UJPS Gen3        8               Thermal     Load following
+// Wind Farm        20              Wind        Must-take
+// Rooftop Solar    47.32           Solar       Must-take
+// -----------------------------------------------
+// TOTAL FIRM       24 MW (UJPS only)
+// TOTAL VARIABLE   67.32 MW (Wind + Solar)
+// TOTAL CAPACITY   91.32 MW
+// ============================================================================
+
+// ============================================================================
+// END OF GENERATORS
+// ============================================================================

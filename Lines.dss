@@ -1,0 +1,411 @@
+// ============================================================================
+// CHUNNAKAM GRID - 33 kV FEEDER LINES
+// ============================================================================
+// Topology based on CEB Single Line Diagram
+// Line lengths and conductors based on typical Sri Lankan distribution
+//
+// Feeder Characteristics (from actual load profile data):
+// F05: UJPS Generator interconnect - 8 km, LYNX
+// F06: KKS Industrial - 10 km, LYNX/RACOON  
+// F07: Vaddu Mixed/Agriculture - 12 km, RACOON
+// F08: Kompanai Distribution - 10 km, RACOON
+// F09: Chavakachcheri Rural - 18 km, DOG (longest, highest impedance)
+// F10: Point Pedro Coastal - 14 km, RACOON
+// F11: Jaffna Town Urban - 8 km, LYNX/XLPE
+// F12: Tie Feeder - 10 km, RACOON
+// ============================================================================
+
+// ----------------------------------------------------------------------------
+// 33 kV BUS COUPLER (between Bus A and Bus B)
+// ----------------------------------------------------------------------------
+// This is the critical connection between transformer sections
+// Normally OPEN for split-bus operation
+// Can be closed for load transfer during contingencies
+
+// TEMPORARILY DISABLED - Investigating loading issues
+// New Line.BusCoupler
+// ~   phases=3
+// ~   bus1=Bus_33kV_A.1.2.3
+// ~   bus2=Bus_33kV_B.1.2.3
+// ~   length=0.01                 // 10 meters (negligible)
+// ~   linecode=LYNX_33kV
+// ~   units=km
+// ~   switch=yes
+// ~   enabled=yes
+// Note: Control state set in Switches.dss
+
+// ----------------------------------------------------------------------------
+// FEEDER F05 - UTHURU JANANI (UJPS Generator Interconnect)
+// ----------------------------------------------------------------------------
+// Connects UJPS 24MW thermal plant to 33kV bus
+// Short, heavy conductor for generation export
+
+// F05_Sec1 REMOVED - Replaced by CB_F05 in Switches.dss
+// New Line.F05_Sec1
+// ~   phases=3
+// ~   bus1=Bus_33kV_A.1.2.3
+// ~   bus2=F05_Node1.1.2.3
+// ~   length=2.0
+// ~   linecode=LYNX_33kV
+// ~   units=km
+
+New Line.F05_Sec2
+~   phases=3
+~   bus1=F05_Node1.1.2.3
+~   bus2=F05_Node2.1.2.3
+~   length=3.0
+~   linecode=LYNX_33kV
+~   units=km
+
+New Line.F05_Sec3
+~   phases=3
+~   bus1=F05_Node2.1.2.3
+~   bus2=F05_UJPS.1.2.3              // UJPS connection point
+~   length=3.0
+~   linecode=LYNX_33kV
+~   units=km
+
+// ----------------------------------------------------------------------------
+// FEEDER F06 - KKS 3 (Industrial)
+// ----------------------------------------------------------------------------
+// Serves KKS Cement Factory and surrounding industrial zone
+// Higher current capacity conductor
+
+// F06_Sec1 REMOVED - Replaced by CB_F06 in Switches.dss
+// New Line.F06_Sec1
+// ~   phases=3
+// ~   bus1=Bus_33kV_A.1.2.3
+// ~   bus2=F06_Node1.1.2.3
+// ~   length=2.5
+// ~   linecode=LYNX_33kV
+// ~   units=km
+
+New Line.F06_Sec2
+~   phases=3
+~   bus1=F06_Node1.1.2.3
+~   bus2=F06_Node2.1.2.3             // DT_F06_1 location (industrial)
+~   length=2.5
+~   linecode=LYNX_33kV
+~   units=km
+
+New Line.F06_Sec3
+~   phases=3
+~   bus1=F06_Node2.1.2.3
+~   bus2=F06_Node3.1.2.3             // DT_F06_2 location
+~   length=2.5
+~   linecode=RACOON_33kV
+~   units=km
+
+New Line.F06_Sec4
+~   phases=3
+~   bus1=F06_Node3.1.2.3
+~   bus2=F06_Node4.1.2.3             // DT_F06_3 location (end)
+~   length=2.5
+~   linecode=RACOON_33kV
+~   units=km
+
+// ----------------------------------------------------------------------------
+// FEEDER F07 - VADDU (Mixed/Agriculture)
+// ----------------------------------------------------------------------------
+// Mixed agricultural and residential area
+
+// F07_Sec1 REMOVED - Replaced by CB_F07 in Switches.dss
+// New Line.F07_Sec1
+// ~   phases=3
+// ~   bus1=Bus_33kV_A.1.2.3
+// ~   bus2=F07_Node1.1.2.3
+// ~   length=3.0
+// ~   linecode=RACOON_33kV
+// ~   units=km
+
+New Line.F07_Sec2
+~   phases=3
+~   bus1=F07_Node1.1.2.3
+~   bus2=F07_Node2.1.2.3             // DT_F07_1 location
+~   length=3.0
+~   linecode=RACOON_33kV
+~   units=km
+
+New Line.F07_Sec3
+~   phases=3
+~   bus1=F07_Node2.1.2.3
+~   bus2=F07_Node3.1.2.3             // DT_F07_2 location
+~   length=3.0
+~   linecode=RACOON_33kV
+~   units=km
+
+New Line.F07_Sec4
+~   phases=3
+~   bus1=F07_Node3.1.2.3
+~   bus2=F07_Node4.1.2.3             // DT_F07_3 location (end)
+~   length=3.0
+~   linecode=DOG_33kV
+~   units=km
+
+// ----------------------------------------------------------------------------
+// FEEDER F08 - KOMPANAI (Distribution)
+// ----------------------------------------------------------------------------
+// General distribution feeder
+
+// F08_Sec1 REMOVED - Replaced by CB_F08 in Switches.dss
+// New Line.F08_Sec1
+// ~   phases=3
+// ~   bus1=Bus_33kV_A.1.2.3
+// ~   bus2=F08_Node1.1.2.3
+// ~   length=2.5
+// ~   linecode=RACOON_33kV
+// ~   units=km
+
+New Line.F08_Sec2
+~   phases=3
+~   bus1=F08_Node1.1.2.3
+~   bus2=F08_Node2.1.2.3             // DT_F08_1 location
+~   length=2.5
+~   linecode=RACOON_33kV
+~   units=km
+
+New Line.F08_Sec3
+~   phases=3
+~   bus1=F08_Node2.1.2.3
+~   bus2=F08_Node3.1.2.3             // DT_F08_2 location
+~   length=2.5
+~   linecode=RACOON_33kV
+~   units=km
+
+New Line.F08_Sec4
+~   phases=3
+~   bus1=F08_Node3.1.2.3
+~   bus2=F08_Node4.1.2.3             // DT_F08_3 location (end)
+~   length=2.5
+~   linecode=DOG_33kV
+~   units=km
+
+// ----------------------------------------------------------------------------
+// FEEDER F09 - CHAVAKACHCHERI (Rural)
+// ----------------------------------------------------------------------------
+// LONGEST FEEDER - 18 km to remote rural areas
+// High impedance DOG conductor - ideal for fault studies
+// This feeder is CRITICAL for Fault Diagnostics research
+
+// F09_Sec1 REMOVED - Replaced by CB_F09 in Switches.dss
+// New Line.F09_Sec1
+// ~   phases=3
+// ~   bus1=Bus_33kV_B.1.2.3
+// ~   bus2=F09_Node1.1.2.3
+// ~   length=3.0
+// ~   linecode=DOG_33kV
+// ~   units=km
+
+New Line.F09_Sec2
+~   phases=3
+~   bus1=F09_Node1.1.2.3
+~   bus2=F09_Node2.1.2.3             // DT_F09_1 location
+~   length=4.0
+~   linecode=DOG_33kV
+~   units=km
+
+New Line.F09_Sec3
+~   phases=3
+~   bus1=F09_Node2.1.2.3
+~   bus2=F09_Node3.1.2.3             // DT_F09_2 location
+~   length=4.0
+~   linecode=DOG_33kV
+~   units=km
+
+New Line.F09_Sec4
+~   phases=3
+~   bus1=F09_Node3.1.2.3
+~   bus2=F09_Node4.1.2.3             // DT_F09_3 location
+~   length=4.0
+~   linecode=DOG_33kV
+~   units=km
+
+New Line.F09_Sec5
+~   phases=3
+~   bus1=F09_Node4.1.2.3
+~   bus2=F09_Node5.1.2.3             // DT_F09_4 location (remote end)
+~   length=3.0
+~   linecode=DOG_33kV
+~   units=km
+
+// ----------------------------------------------------------------------------
+// FEEDER F10 - POINT PEDRO (Coastal)
+// ----------------------------------------------------------------------------
+// Coastal area with fishing communities
+
+// F10_Sec1 REMOVED - Replaced by CB_F10 in Switches.dss
+// New Line.F10_Sec1
+// ~   phases=3
+// ~   bus1=Bus_33kV_B.1.2.3
+// ~   bus2=F10_Node1.1.2.3
+// ~   length=3.5
+// ~   linecode=RACOON_33kV
+// ~   units=km
+
+New Line.F10_Sec2
+~   phases=3
+~   bus1=F10_Node1.1.2.3
+~   bus2=F10_Node2.1.2.3             // DT_F10_1 location
+~   length=3.5
+~   linecode=RACOON_33kV
+~   units=km
+
+New Line.F10_Sec3
+~   phases=3
+~   bus1=F10_Node2.1.2.3
+~   bus2=F10_Node3.1.2.3             // DT_F10_2 location
+~   length=3.5
+~   linecode=RACOON_33kV
+~   units=km
+
+New Line.F10_Sec4
+~   phases=3
+~   bus1=F10_Node3.1.2.3
+~   bus2=F10_Node4.1.2.3             // DT_F10_3 location (end)
+~   length=3.5
+~   linecode=DOG_33kV
+~   units=km
+
+// ----------------------------------------------------------------------------
+// FEEDER F11 - JAFFNA TOWN (Urban)
+// ----------------------------------------------------------------------------
+// Urban area - highest load density, highest rooftop solar
+// Mix of overhead LYNX and underground XLPE in town center
+// CRITICAL for Grid Stability research (high PV penetration)
+
+// F11_Sec1 REMOVED - Replaced by CB_F11 in Switches.dss
+// New Line.F11_Sec1
+// ~   phases=3
+// ~   bus1=Bus_33kV_B.1.2.3
+// ~   bus2=F11_Node1.1.2.3
+// ~   length=1.5
+// ~   linecode=LYNX_33kV
+// ~   units=km
+
+New Line.F11_Sec2
+~   phases=3
+~   bus1=F11_Node1.1.2.3
+~   bus2=F11_Node2.1.2.3             // DT_F11_Hospital location
+~   length=1.5
+~   linecode=LYNX_33kV
+~   units=km
+
+New Line.F11_Sec3
+~   phases=3
+~   bus1=F11_Node2.1.2.3
+~   bus2=F11_Node3.1.2.3             // DT_F11_Commercial location
+~   length=1.5
+~   linecode=XLPE_185_33kV     // Underground in town center
+~   units=km
+
+New Line.F11_Sec4
+~   phases=3
+~   bus1=F11_Node3.1.2.3
+~   bus2=F11_Node4.1.2.3             // DT_F11_Residential1 location
+~   length=1.5
+~   linecode=XLPE_185_33kV
+~   units=km
+
+New Line.F11_Sec5
+~   phases=3
+~   bus1=F11_Node4.1.2.3
+~   bus2=F11_Node5.1.2.3             // DT_F11_Residential2 location (end)
+~   length=2.0
+~   linecode=LYNX_33kV
+~   units=km
+
+// Wind Farm connection spur
+New Line.F11_Wind_Spur
+~   phases=3
+~   bus1=F11_Node1.1.2.3
+~   bus2=F11_WindFarm.1.2.3          // 20MW Wind Farm connection
+~   length=2.0
+~   linecode=LYNX_33kV
+~   units=km
+
+// ----------------------------------------------------------------------------
+// FEEDER F12 - TIE FEEDER
+// ----------------------------------------------------------------------------
+// This feeder has TIE SWITCHES to adjacent feeders (F09, F11)
+// Critical for Self-Healing research
+
+// F12_Sec1 REMOVED - Replaced by CB_F12 in Switches.dss
+// New Line.F12_Sec1
+// ~   phases=3
+// ~   bus1=Bus_33kV_B.1.2.3
+// ~   bus2=F12_Node1.1.2.3
+// ~   length=2.5
+// ~   linecode=RACOON_33kV
+// ~   units=km
+
+New Line.F12_Sec2
+~   phases=3
+~   bus1=F12_Node1.1.2.3
+~   bus2=F12_Node2.1.2.3             // DT_F12_1 location
+~   length=2.5
+~   linecode=RACOON_33kV
+~   units=km
+
+New Line.F12_Sec3
+~   phases=3
+~   bus1=F12_Node2.1.2.3
+~   bus2=F12_Node3.1.2.3             // DT_F12_2 location (end)
+~   length=2.5
+~   linecode=RACOON_33kV
+~   units=km
+
+// OLD TIE SWITCHES REMOVED - Replaced by new tie switches in Switches.dss
+// The new tie switch topology connects adjacent feeders at their endpoints:
+// - Tie_F06_F07: F06_Node4 <-> F07_Node4
+// - Tie_F07_F08: F07_Node4 <-> F08_Node4
+// - Tie_F09_F10: F09_Node5 <-> F10_Node4
+// - Tie_F10_F11: F10_Node4 <-> F11_Node5
+// - BusCoupler: Bus_33kV_A <-> Bus_33kV_B
+
+// New Line.Tie_F12_F09  // REMOVED - See Switches.dss for new tie configuration
+// New Line.Tie_F12_F11  // REMOVED - See Switches.dss for new tie configuration
+
+// ============================================================================
+// LOW VOLTAGE LINES (400V) - Household connections
+// ============================================================================
+// Short LV lines from distribution transformers to household clusters
+
+// F06 LV lines
+New Line.F06_LV1_Line  phases=3  bus1=F06_LV1.1.2.3  bus2=F06_HH1.1.2.3  length=0.1  linecode=ABC_95_LV  units=km
+New Line.F06_LV2_Line  phases=3  bus1=F06_LV2.1.2.3  bus2=F06_HH2.1.2.3  length=0.1  linecode=ABC_95_LV  units=km
+New Line.F06_LV3_Line  phases=3  bus1=F06_LV3.1.2.3  bus2=F06_HH3.1.2.3  length=0.1  linecode=ABC_50_LV  units=km
+
+// F07 LV lines
+New Line.F07_LV1_Line  phases=3  bus1=F07_LV1.1.2.3  bus2=F07_HH1.1.2.3  length=0.1  linecode=ABC_95_LV  units=km
+New Line.F07_LV2_Line  phases=3  bus1=F07_LV2.1.2.3  bus2=F07_HH2.1.2.3  length=0.1  linecode=ABC_50_LV  units=km
+New Line.F07_LV3_Line  phases=3  bus1=F07_LV3.1.2.3  bus2=F07_HH3.1.2.3  length=0.15 linecode=ABC_50_LV  units=km
+
+// F08 LV lines
+New Line.F08_LV1_Line  phases=3  bus1=F08_LV1.1.2.3  bus2=F08_HH1.1.2.3  length=0.1  linecode=ABC_95_LV  units=km
+New Line.F08_LV2_Line  phases=3  bus1=F08_LV2.1.2.3  bus2=F08_HH2.1.2.3  length=0.1  linecode=ABC_95_LV  units=km
+New Line.F08_LV3_Line  phases=3  bus1=F08_LV3.1.2.3  bus2=F08_HH3.1.2.3  length=0.1  linecode=ABC_50_LV  units=km
+
+// F09 LV lines (rural - longer service lines)
+New Line.F09_LV1_Line  phases=3  bus1=F09_LV1.1.2.3  bus2=F09_HH1.1.2.3  length=0.15 linecode=ABC_50_LV  units=km
+New Line.F09_LV2_Line  phases=3  bus1=F09_LV2.1.2.3  bus2=F09_HH2.1.2.3  length=0.2  linecode=ABC_50_LV  units=km
+New Line.F09_LV3_Line  phases=3  bus1=F09_LV3.1.2.3  bus2=F09_HH3.1.2.3  length=0.2  linecode=ABC_50_LV  units=km
+New Line.F09_LV4_Line  phases=3  bus1=F09_LV4.1.2.3  bus2=F09_HH4.1.2.3  length=0.25 linecode=ABC_50_LV  units=km
+
+// F10 LV lines
+New Line.F10_LV1_Line  phases=3  bus1=F10_LV1.1.2.3  bus2=F10_HH1.1.2.3  length=0.1  linecode=ABC_95_LV  units=km
+New Line.F10_LV2_Line  phases=3  bus1=F10_LV2.1.2.3  bus2=F10_HH2.1.2.3  length=0.1  linecode=ABC_50_LV  units=km
+New Line.F10_LV3_Line  phases=3  bus1=F10_LV3.1.2.3  bus2=F10_HH3.1.2.3  length=0.15 linecode=ABC_50_LV  units=km
+
+// F11 LV lines (urban - short, high capacity)
+New Line.F11_LV_Hosp_Line  phases=3  bus1=F11_LV_Hospital.1.2.3    bus2=F11_HH_Hospital.1.2.3  length=0.05 linecode=ABC_95_LV  units=km
+New Line.F11_LV_Comm_Line  phases=3  bus1=F11_LV_Commercial.1.2.3  bus2=F11_HH_Commercial.1.2.3 length=0.05 linecode=ABC_95_LV  units=km
+New Line.F11_LV_Res1_Line  phases=3  bus1=F11_LV_Res1.1.2.3        bus2=F11_HH_Res1.1.2.3      length=0.08 linecode=ABC_95_LV  units=km
+New Line.F11_LV_Res2_Line  phases=3  bus1=F11_LV_Res2.1.2.3        bus2=F11_HH_Res2.1.2.3      length=0.08 linecode=ABC_95_LV  units=km
+
+// F12 LV lines
+New Line.F12_LV1_Line  phases=3  bus1=F12_LV1.1.2.3  bus2=F12_HH1.1.2.3  length=0.1  linecode=ABC_95_LV  units=km
+New Line.F12_LV2_Line  phases=3  bus1=F12_LV2.1.2.3  bus2=F12_HH2.1.2.3  length=0.1  linecode=ABC_50_LV  units=km
+
+// ============================================================================
+// END OF LINES
+// ============================================================================

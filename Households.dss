@@ -1,0 +1,343 @@
+// ============================================================================
+// CHUNNAKAM GRID - HOUSEHOLD AND CONSUMER LOADS
+// ============================================================================
+// Detailed household-level modeling with 3-5 consumers per feeder
+// Each consumer has unique characteristics based on:
+// - Location (urban/rural/industrial/coastal)
+// - Consumer type (residential/commercial/industrial/hospital)
+// - Load magnitude and power factor
+// - Time-varying profile (daily shape)
+//
+// LOAD VALUES based on actual LP data analysis:
+// - F06 (Industrial): Peak 6.22 MW, Avg 2.45 MW
+// - F07 (Mixed): Peak 7.84 MW, Avg 2.96 MW  
+// - F08 (Distribution): Peak 12.60 MW, Avg 4.52 MW
+// - F09 (Rural): Peak 7.21 MW, Avg 2.33 MW
+// - F10 (Coastal): Peak 12.62 MW, Avg 4.07 MW
+// - F11 (Urban): Peak 14.41 MW, Avg 3.83 MW (but wind causes net export)
+// - F12 (Tie): Peak 12.74 MW, Avg 3.41 MW
+// ============================================================================
+
+// ----------------------------------------------------------------------------
+// F06 - KKS INDUSTRIAL AREA (3 households/consumers)
+// ----------------------------------------------------------------------------
+// Total peak: ~6.2 MW, dominated by industrial loads
+
+// HH1: KKS Cement Factory - Large industrial consumer
+New Load.F06_Industrial_Factory
+~   bus1=F06_HH1.1.2.3
+~   phases=3
+~   conn=wye
+~   kV=0.4
+~   kW=4000                    // 4 MW peak - cement grinding, kilns
+~   kvar=2400                  // pf=0.86 (induction motors)
+~   model=2                    // Constant Z for motor loads
+~   daily=F06_Industrial_Factory_20250801
+~   status=variable
+~   vminpu=0.90
+~   vmaxpu=1.10
+
+// HH2: Small industries and workshops
+New Load.F06_SmallIndustry
+~   bus1=F06_HH2.1.2.3
+~   phases=3
+~   conn=wye
+~   kV=0.4
+~   kW=1500                    // 1.5 MW peak
+~   kvar=750                   // pf=0.89
+~   model=1                    // Constant P
+~   daily=F06_SmallIndustry_20250801
+~   status=variable
+
+// HH3: Residential cluster near industrial zone
+New Load.F06_Residential
+~   bus1=F06_HH3.1.2.3
+~   phases=3
+~   conn=wye
+~   kV=0.4
+~   kW=700                     // 700 kW peak
+~   kvar=280                   // pf=0.93
+~   model=1
+~   daily=F06_Residential_20250801
+~   status=variable
+
+// ----------------------------------------------------------------------------
+// F07 - VADDU MIXED/AGRICULTURAL AREA (3 households)
+// ----------------------------------------------------------------------------
+// Total peak: ~7.8 MW, mix of residential and agricultural
+
+// HH1: Village center - shops and residences
+New Load.F07_Village_Center
+~   bus1=F07_HH1.1.2.3
+~   phases=3
+~   conn=wye
+~   kV=0.4
+~   kW=2500                    // 2.5 MW peak
+~   kvar=1000                  // pf=0.93
+~   model=1
+~   daily=F07_Village_Center_20250801
+~   status=variable
+
+// HH2: Agricultural area with irrigation pumps
+New Load.F07_Agricultural
+~   bus1=F07_HH2.1.2.3
+~   phases=3
+~   conn=wye
+~   kV=0.4
+~   kW=3000                    // 3 MW peak (pump motors)
+~   kvar=2100                  // pf=0.82 (induction motors)
+~   model=2                    // Constant Z for motors
+~   daily=F07_Agricultural_20250801
+~   status=variable
+
+// HH3: Scattered rural houses
+New Load.F07_Rural_Houses
+~   bus1=F07_HH3.1.2.3
+~   phases=3
+~   conn=wye
+~   kV=0.4
+~   kW=2300                    // 2.3 MW peak
+~   kvar=920                   // pf=0.93
+~   model=1
+~   daily=F07_Rural_Houses_20250801
+~   status=variable
+
+// ----------------------------------------------------------------------------
+// F08 - KOMPANAI DISTRIBUTION (3 households)
+// ----------------------------------------------------------------------------
+// Total peak: ~12.6 MW, general distribution
+
+// HH1: Main commercial area
+New Load.F08_Commercial
+~   bus1=F08_HH1.1.2.3
+~   phases=3
+~   conn=wye
+~   kV=0.4
+~   kW=5000                    // 5 MW peak
+~   kvar=2000                  // pf=0.93
+~   model=1
+~   daily=F08_Commercial_20250801
+~   status=variable
+
+// HH2: Residential cluster
+New Load.F08_Residential
+~   bus1=F08_HH2.1.2.3
+~   phases=3
+~   conn=wye
+~   kV=0.4
+~   kW=4500                    // 4.5 MW peak
+~   kvar=1800                  // pf=0.93
+~   model=1
+~   daily=F08_Residential_20250801
+~   status=variable
+
+// HH3: Mixed use area
+New Load.F08_Mixed
+~   bus1=F08_HH3.1.2.3
+~   phases=3
+~   conn=wye
+~   kV=0.4
+~   kW=3100                    // 3.1 MW peak
+~   kvar=1240                  // pf=0.93
+~   model=1
+~   daily=F08_Mixed_20250801
+~   status=variable
+
+// ----------------------------------------------------------------------------
+// F09 - CHAVAKACHCHERI RURAL (4 households)
+// ----------------------------------------------------------------------------
+// Total peak: ~7.2 MW, spread over long distance (18 km)
+// LOWEST SOLAR PENETRATION - clear load pattern from data
+
+// HH1: Small town center
+New Load.F09_Town_Center
+~   bus1=F09_HH1.1.2.3
+~   phases=3
+~   conn=wye
+~   kV=0.4
+~   kW=2200                    // 2.2 MW peak
+~   kvar=880                   // pf=0.93
+~   model=1
+~   daily=F09_Town_Center_20250801
+~   status=variable
+
+// HH2: Village cluster
+New Load.F09_Village
+~   bus1=F09_HH2.1.2.3
+~   phases=3
+~   conn=wye
+~   kV=0.4
+~   kW=1800                    // 1.8 MW peak
+~   kvar=720                   // pf=0.93
+~   model=1
+~   daily=F09_Village_20250801
+~   status=variable
+
+// HH3: Scattered rural - agriculture
+New Load.F09_Rural_Agri
+~   bus1=F09_HH3.1.2.3
+~   phases=3
+~   conn=wye
+~   kV=0.4
+~   kW=2000                    // 2 MW peak (some pumps)
+~   kvar=1000                  // pf=0.89 (pump motors)
+~   model=2
+~   daily=F09_Rural_Agri_20250801
+~   status=variable
+
+// HH4: Remote farming area (end of line)
+New Load.F09_Remote
+~   bus1=F09_HH4.1.2.3
+~   phases=3
+~   conn=wye
+~   kV=0.4
+~   kW=1200                    // 1.2 MW peak
+~   kvar=480                   // pf=0.93
+~   model=1
+~   daily=F09_Remote_20250801
+~   status=variable
+
+// ----------------------------------------------------------------------------
+// F10 - POINT PEDRO COASTAL (3 households)
+// ----------------------------------------------------------------------------
+// Total peak: ~12.6 MW, fishing community and coastal town
+
+// HH1: Main town commercial
+New Load.F10_Town
+~   bus1=F10_HH1.1.2.3
+~   phases=3
+~   conn=wye
+~   kV=0.4
+~   kW=5500                    // 5.5 MW peak
+~   kvar=2200                  // pf=0.93
+~   model=1
+~   daily=F10_Town_20250801
+~   status=variable
+
+// HH2: Fishing village - cold storage, ice plants
+New Load.F10_Fishing
+~   bus1=F10_HH2.1.2.3
+~   phases=3
+~   conn=wye
+~   kV=0.4
+~   kW=4000                    // 4 MW peak (refrigeration)
+~   kvar=2000                  // pf=0.89 (compressor motors)
+~   model=2
+~   daily=F10_Fishing_20250801     // 24-hour cold storage
+~   status=variable
+
+// HH3: Coastal residential
+New Load.F10_Coastal_Res
+~   bus1=F10_HH3.1.2.3
+~   phases=3
+~   conn=wye
+~   kV=0.4
+~   kW=3100                    // 3.1 MW peak
+~   kvar=1240                  // pf=0.93
+~   model=1
+~   daily=F10_Coastal_Res_20250801
+~   status=variable
+
+// ----------------------------------------------------------------------------
+// F11 - JAFFNA TOWN URBAN (4 households)
+// ----------------------------------------------------------------------------
+// Total peak: ~14.4 MW, highest load density, CRITICAL LOADS
+// HIGHEST SOLAR PENETRATION - actual data shows 56% export time!
+
+// HH_Hospital: Jaffna Teaching Hospital (CRITICAL LOAD)
+New Load.F11_Hospital
+~   bus1=F11_HH_Hospital.1.2.3
+~   phases=3
+~   conn=wye
+~   kV=0.4
+~   kW=2500                    // 2.5 MW peak (24-hour)
+~   kvar=1250                  // pf=0.89 (medical equipment, AC)
+~   model=1
+~   daily=F11_Hospital_20250801
+~   status=variable
+~   vminpu=0.95                // Tighter voltage limits for hospital
+~   vmaxpu=1.05
+
+// HH_Commercial: Town center shops, offices, bank
+New Load.F11_Commercial
+~   bus1=F11_HH_Commercial.1.2.3
+~   phases=3
+~   conn=wye
+~   kV=0.4
+~   kW=4500                    // 4.5 MW peak
+~   kvar=1800                  // pf=0.93
+~   model=1
+~   daily=F11_Commercial_20250801
+~   status=variable
+
+// HH_Res1: Residential apartments
+New Load.F11_Apartments
+~   bus1=F11_HH_Res1.1.2.3
+~   phases=3
+~   conn=wye
+~   kV=0.4
+~   kW=4000                    // 4 MW peak
+~   kvar=1600                  // pf=0.93
+~   model=1
+~   daily=F11_Apartments_20250801
+~   status=variable
+
+// HH_Res2: Mixed residential/small shops
+New Load.F11_MixedRes
+~   bus1=F11_HH_Res2.1.2.3
+~   phases=3
+~   conn=wye
+~   kV=0.4
+~   kW=3400                    // 3.4 MW peak
+~   kvar=1360                  // pf=0.93
+~   model=1
+~   daily=F11_MixedRes_20250801
+~   status=variable
+
+// ----------------------------------------------------------------------------
+// F12 - TIE FEEDER (2 households)
+// ----------------------------------------------------------------------------
+// Total peak: ~12.7 MW
+
+// HH1: Residential area
+New Load.F12_Residential1
+~   bus1=F12_HH1.1.2.3
+~   phases=3
+~   conn=wye
+~   kV=0.4
+~   kW=7000                    // 7 MW peak
+~   kvar=2800                  // pf=0.93
+~   model=1
+~   daily=F12_Residential1_20250801
+~   status=variable
+
+// HH2: Mixed residential
+New Load.F12_Residential2
+~   bus1=F12_HH2.1.2.3
+~   phases=3
+~   conn=wye
+~   kV=0.4
+~   kW=5700                    // 5.7 MW peak
+~   kvar=2280                  // pf=0.93
+~   model=1
+~   daily=F12_Residential2_20250801
+~   status=variable
+
+// ============================================================================
+// LOAD SUMMARY
+// ============================================================================
+// Feeder    Consumers    Peak Load (MW)    Notes
+// F06       3            6.20              Industrial dominant
+// F07       3            7.80              Agricultural pumps
+// F08       3            12.60             General distribution
+// F09       4            7.20              Rural, long line
+// F10       3            12.60             Fishing/coastal
+// F11       4            14.40             Urban, hospital
+// F12       2            12.70             Tie feeder
+// -----------------------------------------------
+// TOTAL     22           73.50 MW (diversified ~45-50 MW)
+// ============================================================================
+
+// ============================================================================
+// END OF HOUSEHOLDS
+// ============================================================================

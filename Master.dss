@@ -1,0 +1,126 @@
+// ============================================================================
+// CHUNNAKAM GRID SUBSTATION - REALISTIC OPENDSS MODEL
+// 132/33 kV Grid Substation, Jaffna District, Northern Sri Lanka
+// ============================================================================
+// 
+// This model replicates the real Chunnakam distribution network based on:
+// - Actual load profile data (April-August 2025)
+// - CEB Single Line Diagram specifications
+// - Sri Lankan grid standards (50 Hz, CEB conductor specifications)
+//
+// DESIGN PHILOSOPHY:
+// - Household-level loads (3-5 per feeder) with realistic consumption patterns
+// - Rooftop solar on households (some export, some self-consume only)
+// - Dynamic load behavior based on time-of-day and solar irradiance
+// - Realistic tie switches and sectionalizers for fault management
+//
+// SIGN CONVENTION (matches real data):
+// - Load objects: Positive kW = consumption from grid
+// - Generator/PV: Positive kW = injection to grid
+// - Net flow: Negative at feeder head = grid→customers (import)
+//             Positive at feeder head = customers→grid (export)
+//
+// ============================================================================
+
+Clear
+
+// ----------------------------------------------------------------------------
+// SET GLOBAL BASE FREQUENCY (CRITICAL FOR SRI LANKA 50 Hz GRID)
+// ----------------------------------------------------------------------------
+// Must be set BEFORE defining any circuit elements
+// Default is 60 Hz - Sri Lanka uses 50 Hz
+
+Set DefaultBaseFrequency=50
+
+// ----------------------------------------------------------------------------
+// CIRCUIT DEFINITION - 132kV Source from Kilinochchi
+// ----------------------------------------------------------------------------
+// Represents the Kilinochchi-Chunnakam 132kV double-circuit transmission line
+// Short circuit capacity ~1500 MVA represents "weak grid" connection
+// (Long transmission distance from main hydro reservoirs)
+
+New Circuit.Chunnakam_GSS 
+~   basekv=132 
+~   pu=1.0 
+~   phases=3 
+~   bus1=Source_132kV 
+~   angle=0
+~   Mvasc3=1500         // 3-phase short circuit MVA
+~   Mvasc1=1200         // Single-phase short circuit MVA
+~   basefreq=50         // Sri Lankan grid frequency
+
+// ----------------------------------------------------------------------------
+// REDIRECT TO COMPONENT FILES
+// ----------------------------------------------------------------------------
+// Load component definitions in order of dependency
+// IMPORTANT: All elements must be defined BEFORE CalcVoltageBases
+
+Redirect LineCodes.dss           // Conductor specifications (CEB standards)
+Redirect Transformers.dss        // Grid and distribution transformers
+Redirect Lines.dss               // 33kV feeder lines with topology
+Redirect Switches.dss            // Sectionalizers, tie switches, reclosers
+Redirect LoadShapes.dss          // Time-varying load and generation profiles
+Redirect Households.dss          // Household-level loads (main consumption)
+Redirect RooftopSolar.dss        // Distributed PV on households
+Redirect Generators.dss          // UJPS thermal and Wind farm
+Redirect Monitors.dss            // Measurement points for all research components
+
+// ----------------------------------------------------------------------------
+// VOLTAGE BASE SETTINGS (AFTER all elements are defined)
+// ----------------------------------------------------------------------------
+// CRITICAL: CalcVoltageBases must come AFTER all circuit topology is defined
+// This allows OpenDSS to trace through transformers and propagate voltage bases
+
+Set voltagebases=[132, 33, 0.4]
+Calcvoltagebases
+
+// ----------------------------------------------------------------------------
+// SOLUTION SETTINGS
+// ----------------------------------------------------------------------------
+
+Set mode=daily                 // Daily simulation with LoadShape profiles
+Set controlmode=static          // Static control for initial solve
+Set stepsize=15m                // 15-minute time steps
+Set number=96                   // 96 steps = 24 hours at 15-min intervals
+Set maxcontroliter=100          // Max control iterations
+Set maxiterations=300           // Max power flow iterations
+Set tolerance=0.0001            // Convergence tolerance (0.01%)
+
+// ----------------------------------------------------------------------------
+// INITIAL SOLVE - Verify model connectivity
+// ----------------------------------------------------------------------------
+
+Solve
+
+// Display summary (commented out for scripted use - uncomment for interactive use)
+// Show Voltages LN Nodes
+// Show Powers kVA Elements
+
+// ============================================================================
+// USAGE INSTRUCTIONS FOR RESEARCH COMPONENTS
+// ============================================================================
+//
+// 1. NET LOAD FORECASTING (IT22891204):
+//    - Use daily/yearly mode with LoadShapes
+//    - Monitor TR2 and TR3 for net load at substation
+//    - Set mode=daily, number=1, stepsize=15m
+//
+// 2. GRID STABILITY (IT22360182):
+//    - Focus on F11 (Jaffna Town) with high PV penetration
+//    - Vary solar irradiance using Solar_Irradiance shape
+//    - Monitor bus voltages: Mon_Bus_33kV_A, Mon_Bus_33kV_B
+//    - Set mode=daily, stepsize=1m for high resolution
+//
+// 3. FAULT DIAGNOSTICS (IT22577924):
+//    - Load fault scenarios: Redirect Faults_Test.dss
+//    - F09 (rural) is ideal for HIF studies (long line, high impedance)
+//    - Use Mon_F09_* monitors for waveform capture
+//    - Set mode=dynamics or mode=faultstudy
+//
+// 4. SELF-HEALING (IT22053350):
+//    - Use switch controls in Switches.dss
+//    - Open/close sectionalizers to isolate faults
+//    - Close tie switches to restore unfaulted sections
+//    - Monitor load restoration at each step
+//
+// ============================================================================

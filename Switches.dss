@@ -1,0 +1,86 @@
+! ===========================================================
+! CHUNNAKAM GRID SUBSTATION - SWITCHING INFRASTRUCTURE
+! ===========================================================
+! For: Self-Healing (FLISR) Research using MARL+GNN
+! Student ID: IT22053350
+! Date: January 2026
+!
+! SWITCH SUMMARY:
+! Circuit Breakers:  8  (CB_F05 to CB_F12)
+! Sectionalizers:    8  (SEC_F05 to SEC_F12)
+! Tie Switches:      5  (4 feeders + 1 bus coupler)
+! TOTAL:            21  switches (MARL Action Space)
+! ===========================================================
+
+
+! -----------------------------------------------------------
+! SECTION 1: CIRCUIT BREAKERS (8 total)
+! -----------------------------------------------------------
+! Location: At feeder head (between 33kV bus and first node)
+! Normal State: CLOSED (enabled=yes)
+! -----------------------------------------------------------
+
+! Bus Section A (Fed by TR2)
+New Line.CB_F05 Bus1=Bus_33kV_A.1.2.3 Bus2=F05_Node1.1.2.3 Switch=yes Length=0.001 Units=km enabled=yes
+New Line.CB_F06 Bus1=Bus_33kV_A.1.2.3 Bus2=F06_Node1.1.2.3 Switch=yes Length=0.001 Units=km enabled=yes
+New Line.CB_F07 Bus1=Bus_33kV_A.1.2.3 Bus2=F07_Node1.1.2.3 Switch=yes Length=0.001 Units=km enabled=yes
+New Line.CB_F08 Bus1=Bus_33kV_A.1.2.3 Bus2=F08_Node1.1.2.3 Switch=yes Length=0.001 Units=km enabled=yes
+
+! Bus Section B (Fed by TR3)
+New Line.CB_F09 Bus1=Bus_33kV_B.1.2.3 Bus2=F09_Node1.1.2.3 Switch=yes Length=0.001 Units=km enabled=yes
+New Line.CB_F10 Bus1=Bus_33kV_B.1.2.3 Bus2=F10_Node1.1.2.3 Switch=yes Length=0.001 Units=km enabled=yes
+New Line.CB_F11 Bus1=Bus_33kV_B.1.2.3 Bus2=F11_Node1.1.2.3 Switch=yes Length=0.001 Units=km enabled=yes
+New Line.CB_F12 Bus1=Bus_33kV_B.1.2.3 Bus2=F12_Node1.1.2.3 Switch=yes Length=0.001 Units=km enabled=yes
+
+
+! -----------------------------------------------------------
+! SECTION 2: SECTIONALIZERS (8 total - one per feeder)
+! -----------------------------------------------------------
+! Location: At MIDPOINT of each feeder
+! Normal State: CLOSED (enabled=yes)
+! Divides feeder into UPSTREAM zone and DOWNSTREAM zone
+! -----------------------------------------------------------
+
+! Section A Sectionalizers
+New Line.SEC_F05 Bus1=F05_Node2.1.2.3 Bus2=F05_UJPS.1.2.3 Switch=yes Length=0.001 Units=km enabled=yes
+New Line.SEC_F06 Bus1=F06_Node2.1.2.3 Bus2=F06_Node3.1.2.3 Switch=yes Length=0.001 Units=km enabled=yes
+New Line.SEC_F07 Bus1=F07_Node2.1.2.3 Bus2=F07_Node3.1.2.3 Switch=yes Length=0.001 Units=km enabled=yes
+New Line.SEC_F08 Bus1=F08_Node2.1.2.3 Bus2=F08_Node3.1.2.3 Switch=yes Length=0.001 Units=km enabled=yes
+
+! Section B Sectionalizers
+New Line.SEC_F09 Bus1=F09_Node3.1.2.3 Bus2=F09_Node4.1.2.3 Switch=yes Length=0.001 Units=km enabled=yes
+New Line.SEC_F10 Bus1=F10_Node2.1.2.3 Bus2=F10_Node3.1.2.3 Switch=yes Length=0.001 Units=km enabled=yes
+New Line.SEC_F11 Bus1=F11_Node2.1.2.3 Bus2=F11_Node3.1.2.3 Switch=yes Length=0.001 Units=km enabled=yes
+New Line.SEC_F12 Bus1=F12_Node1.1.2.3 Bus2=F12_Node2.1.2.3 Switch=yes Length=0.001 Units=km enabled=yes
+
+
+! -----------------------------------------------------------
+! SECTION 3: TIE SWITCHES (5 total)
+! -----------------------------------------------------------
+! Location: Between endpoints of adjacent feeders
+! Normal State: OPEN (enabled=no)
+! -----------------------------------------------------------
+
+! Section A Tie Switches
+New Line.Tie_F06_F07 Bus1=F06_Node4.1.2.3 Bus2=F07_Node4.1.2.3 LineCode=RACOON_33kV Length=1.5 Units=km Switch=yes enabled=no
+New Line.Tie_F07_F08 Bus1=F07_Node4.1.2.3 Bus2=F08_Node4.1.2.3 LineCode=RACOON_33kV Length=1.5 Units=km Switch=yes enabled=no
+
+! Section B Tie Switches
+New Line.Tie_F09_F10 Bus1=F09_Node5.1.2.3 Bus2=F10_Node4.1.2.3 LineCode=RACOON_33kV Length=2.0 Units=km Switch=yes enabled=no
+New Line.Tie_F10_F11 Bus1=F10_Node4.1.2.3 Bus2=F11_Node5.1.2.3 LineCode=RACOON_33kV Length=1.5 Units=km Switch=yes enabled=no
+
+! Bus Coupler (Cross-section)
+New Line.BusCoupler Bus1=Bus_33kV_A.1.2.3 Bus2=Bus_33kV_B.1.2.3 Switch=yes Length=0.01 Units=km enabled=no
+
+
+! -----------------------------------------------------------
+! MARL ACTION SPACE (21 switches)
+! -----------------------------------------------------------
+! Index 0-7:   CB_F05 to CB_F12      (Normal=1, Closed)
+! Index 8-15:  SEC_F05 to SEC_F12    (Normal=1, Closed)
+! Index 16-20: Tie switches          (Normal=0, Open)
+!
+! Normal State Vector: [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0]
+! -----------------------------------------------------------
+
+! END OF SWITCHES.DSS

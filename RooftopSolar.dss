@@ -1,0 +1,416 @@
+// ============================================================================
+// CHUNNAKAM GRID - ROOFTOP SOLAR PV SYSTEMS
+// ============================================================================
+// Distributed solar based on actual feeder-wise data:
+// - F06: 10.14 MW total rooftop solar
+// - F07: 9.17 MW
+// - F08: 5.44 MW
+// - F09: 0.35 MW (RURAL - lowest penetration)
+// - F10: 7.00 MW
+// - F11: 10.22 MW (URBAN - highest penetration)
+// - F12: Estimated ~5 MW
+//
+// TWO TYPES OF SOLAR CONSUMERS:
+// 1. NET METERING: Export excess to grid (positive flow when solar > load)
+// 2. SELF-CONSUMPTION ONLY: No export, solar limited to load
+//
+// From actual data, approximately:
+// - F09: 24% export time (mostly self-consumption)
+// - F11: 56% export time (heavy net metering)
+// ============================================================================
+
+// ----------------------------------------------------------------------------
+// INVERTER EFFICIENCY CURVES
+// ----------------------------------------------------------------------------
+// Realistic inverter efficiency as function of output power
+
+New XYCurve.InverterEff
+~   npts=4
+~   xarray=[0.1, 0.2, 0.5, 1.0]
+~   yarray=[0.86, 0.92, 0.96, 0.97]
+
+// Temperature derating curve (efficiency vs temperature)
+New XYCurve.TempDerating
+~   npts=4
+~   xarray=[25, 35, 45, 55]      // Temperature in °C
+~   yarray=[1.0, 0.98, 0.94, 0.88]
+
+// Volt-VAR curve for smart inverters (IEEE 1547-2018)
+New XYCurve.VoltVar_IEEE1547
+~   npts=6
+~   xarray=[0.92, 0.98, 1.0, 1.0, 1.02, 1.08]
+~   yarray=[0.44, 0.44, 0.0, 0.0, -0.44, -0.44]
+
+// ----------------------------------------------------------------------------
+// F06 - KKS INDUSTRIAL AREA SOLAR (10.14 MW total)
+// ----------------------------------------------------------------------------
+// Industrial rooftops - large systems, all net metering
+
+// Factory rooftop solar (large installation)
+New PVSystem.PV_F06_Factory
+~   bus1=F06_HH1.1.2.3
+~   phases=3
+~   conn=wye
+~   kV=0.4
+~   Pmpp=5000                  // 5 MW peak
+~   irradiance=1               // Per-unit irradiance
+~   %Cutin=5                   // Cut-in at 5% irradiance
+~   %Cutout=5
+~   effcurve=InverterEff
+~   daily=Solar_20250801
+~   %Pmpp=100
+~   kVA=5500                   // Inverter slightly oversized
+~   pf=1.0
+
+// Small industry rooftop
+New PVSystem.PV_F06_SmallInd
+~   bus1=F06_HH2.1.2.3
+~   phases=3
+~   conn=wye
+~   kV=0.4
+~   Pmpp=3500                  // 3.5 MW
+~   irradiance=1
+~   %Cutin=5
+~   %Cutout=5
+~   effcurve=InverterEff
+~   daily=Solar_20250801
+~   %Pmpp=100
+~   kVA=3850
+~   pf=1.0
+
+// Residential area near industrial
+New PVSystem.PV_F06_Residential
+~   bus1=F06_HH3.1.2.3
+~   phases=3
+~   conn=wye
+~   kV=0.4
+~   Pmpp=1640                  // 1.64 MW (aggregate residential)
+~   irradiance=1
+~   %Cutin=5
+~   %Cutout=5
+~   effcurve=InverterEff
+~   daily=Solar_20250801
+~   %Pmpp=100
+~   kVA=1800
+~   pf=1.0
+
+// ----------------------------------------------------------------------------
+// F07 - VADDU MIXED/AGRICULTURAL SOLAR (9.17 MW total)
+// ----------------------------------------------------------------------------
+
+// Village center - mix of residential and shop rooftops
+New PVSystem.PV_F07_Village
+~   bus1=F07_HH1.1.2.3
+~   phases=3
+~   conn=wye
+~   kV=0.4
+~   Pmpp=4000                  // 4 MW
+~   irradiance=1
+~   %Cutin=5
+~   %Cutout=5
+~   effcurve=InverterEff
+~   daily=Solar_20250801
+~   %Pmpp=100
+~   kVA=4400
+~   pf=1.0
+
+// Agricultural area - farm buildings
+New PVSystem.PV_F07_Agricultural
+~   bus1=F07_HH2.1.2.3
+~   phases=3
+~   conn=wye
+~   kV=0.4
+~   Pmpp=3500                  // 3.5 MW
+~   irradiance=1
+~   %Cutin=5
+~   %Cutout=5
+~   effcurve=InverterEff
+~   daily=Solar_20250801
+~   %Pmpp=100
+~   kVA=3850
+~   pf=1.0
+
+// Rural houses - smaller systems
+New PVSystem.PV_F07_Rural
+~   bus1=F07_HH3.1.2.3
+~   phases=3
+~   conn=wye
+~   kV=0.4
+~   Pmpp=1670                  // 1.67 MW
+~   irradiance=1
+~   %Cutin=5
+~   %Cutout=5
+~   effcurve=InverterEff
+~   daily=Solar_20250801
+~   %Pmpp=100
+~   kVA=1840
+~   pf=1.0
+
+// ----------------------------------------------------------------------------
+// F08 - KOMPANAI DISTRIBUTION SOLAR (5.44 MW total)
+// ----------------------------------------------------------------------------
+
+// Commercial area
+New PVSystem.PV_F08_Commercial
+~   bus1=F08_HH1.1.2.3
+~   phases=3
+~   conn=wye
+~   kV=0.4
+~   Pmpp=2500                  // 2.5 MW
+~   irradiance=1
+~   %Cutin=5
+~   %Cutout=5
+~   effcurve=InverterEff
+~   daily=Solar_20250801
+~   %Pmpp=100
+~   kVA=2750
+~   pf=1.0
+
+// Residential cluster
+New PVSystem.PV_F08_Residential
+~   bus1=F08_HH2.1.2.3
+~   phases=3
+~   conn=wye
+~   kV=0.4
+~   Pmpp=2000                  // 2 MW
+~   irradiance=1
+~   %Cutin=5
+~   %Cutout=5
+~   effcurve=InverterEff
+~   daily=Solar_20250801
+~   %Pmpp=100
+~   kVA=2200
+~   pf=1.0
+
+// Mixed use
+New PVSystem.PV_F08_Mixed
+~   bus1=F08_HH3.1.2.3
+~   phases=3
+~   conn=wye
+~   kV=0.4
+~   Pmpp=940                   // 0.94 MW
+~   irradiance=1
+~   %Cutin=5
+~   %Cutout=5
+~   effcurve=InverterEff
+~   daily=Solar_20250801
+~   %Pmpp=100
+~   kVA=1040
+~   pf=1.0
+
+// ----------------------------------------------------------------------------
+// F09 - CHAVAKACHCHERI RURAL SOLAR (0.35 MW total)
+// ----------------------------------------------------------------------------
+// LOWEST SOLAR PENETRATION - rural area, few installations
+// Most are SELF-CONSUMPTION ONLY (limited export capability)
+
+// Town center - only location with net metering
+New PVSystem.PV_F09_Town
+~   bus1=F09_HH1.1.2.3
+~   phases=3
+~   conn=wye
+~   kV=0.4
+~   Pmpp=200                   // 200 kW only
+~   irradiance=1
+~   %Cutin=5
+~   %Cutout=5
+~   effcurve=InverterEff
+~   daily=Solar_20250801
+~   %Pmpp=100
+~   kVA=220
+~   pf=1.0
+
+// Village - small self-consumption systems (limited output)
+New PVSystem.PV_F09_Village
+~   bus1=F09_HH2.1.2.3
+~   phases=3
+~   conn=wye
+~   kV=0.4
+~   Pmpp=150                   // 150 kW
+~   irradiance=1
+~   %Cutin=10                  // Higher cut-in (basic inverters)
+~   %Cutout=10
+~   effcurve=InverterEff
+~   daily=Solar_20250801
+~   %Pmpp=100
+~   kVA=165
+~   pf=1.0
+
+// Note: F09_HH3 and F09_HH4 (remote areas) have NO solar
+
+// ----------------------------------------------------------------------------
+// F10 - POINT PEDRO COASTAL SOLAR (7.00 MW total)
+// ----------------------------------------------------------------------------
+
+// Main town - commercial rooftops
+New PVSystem.PV_F10_Town
+~   bus1=F10_HH1.1.2.3
+~   phases=3
+~   conn=wye
+~   kV=0.4
+~   Pmpp=3500                  // 3.5 MW
+~   irradiance=1
+~   %Cutin=5
+~   %Cutout=5
+~   effcurve=InverterEff
+~   daily=Solar_20250801
+~   %Pmpp=100
+~   kVA=3850
+~   pf=1.0
+
+// Fishing village - cold storage rooftops
+New PVSystem.PV_F10_Fishing
+~   bus1=F10_HH2.1.2.3
+~   phases=3
+~   conn=wye
+~   kV=0.4
+~   Pmpp=2000                  // 2 MW
+~   irradiance=1
+~   %Cutin=5
+~   %Cutout=5
+~   effcurve=InverterEff
+~   daily=Solar_20250801
+~   %Pmpp=100
+~   kVA=2200
+~   pf=1.0
+
+// Coastal residential
+New PVSystem.PV_F10_Coastal
+~   bus1=F10_HH3.1.2.3
+~   phases=3
+~   conn=wye
+~   kV=0.4
+~   Pmpp=1500                  // 1.5 MW
+~   irradiance=1
+~   %Cutin=5
+~   %Cutout=5
+~   effcurve=InverterEff
+~   daily=Solar_20250801
+~   %Pmpp=100
+~   kVA=1650
+~   pf=1.0
+
+// ----------------------------------------------------------------------------
+// F11 - JAFFNA TOWN URBAN SOLAR (10.22 MW total)
+// ----------------------------------------------------------------------------
+// HIGHEST SOLAR PENETRATION - urban rooftops, most with net metering
+// Actual data shows 56% export time!
+
+// Hospital - large rooftop (self-consumption priority)
+New PVSystem.PV_F11_Hospital
+~   bus1=F11_HH_Hospital.1.2.3
+~   phases=3
+~   conn=wye
+~   kV=0.4
+~   Pmpp=1500                  // 1.5 MW
+~   irradiance=1
+~   %Cutin=5
+~   %Cutout=5
+~   effcurve=InverterEff
+~   daily=Solar_20250801
+~   %Pmpp=100
+~   kVA=1650
+~   pf=1.0
+
+// Commercial area - shops, banks, offices
+New PVSystem.PV_F11_Commercial
+~   bus1=F11_HH_Commercial.1.2.3
+~   phases=3
+~   conn=wye
+~   kV=0.4
+~   Pmpp=3500                  // 3.5 MW
+~   irradiance=1
+~   %Cutin=5
+~   %Cutout=5
+~   effcurve=InverterEff
+~   daily=Solar_20250801
+~   %Pmpp=100
+~   kVA=3850
+~   pf=1.0
+
+// Residential apartments - many rooftop installations
+New PVSystem.PV_F11_Apartments
+~   bus1=F11_HH_Res1.1.2.3
+~   phases=3
+~   conn=wye
+~   kV=0.4
+~   Pmpp=3000                  // 3 MW
+~   irradiance=1
+~   %Cutin=5
+~   %Cutout=5
+~   effcurve=InverterEff
+~   daily=Solar_20250801
+~   %Pmpp=100
+~   kVA=3300
+~   pf=1.0
+
+// Mixed residential/shops
+New PVSystem.PV_F11_MixedRes
+~   bus1=F11_HH_Res2.1.2.3
+~   phases=3
+~   conn=wye
+~   kV=0.4
+~   Pmpp=2220                  // 2.22 MW
+~   irradiance=1
+~   %Cutin=5
+~   %Cutout=5
+~   effcurve=InverterEff
+~   daily=Solar_20250801
+~   %Pmpp=100
+~   kVA=2450
+~   pf=1.0
+
+// ----------------------------------------------------------------------------
+// F12 - TIE FEEDER SOLAR (estimated 5 MW)
+// ----------------------------------------------------------------------------
+
+// Residential area 1
+New PVSystem.PV_F12_Res1
+~   bus1=F12_HH1.1.2.3
+~   phases=3
+~   conn=wye
+~   kV=0.4
+~   Pmpp=3000                  // 3 MW
+~   irradiance=1
+~   %Cutin=5
+~   %Cutout=5
+~   effcurve=InverterEff
+~   daily=Solar_20250801
+~   %Pmpp=100
+~   kVA=3300
+~   pf=1.0
+
+// Residential area 2
+New PVSystem.PV_F12_Res2
+~   bus1=F12_HH2.1.2.3
+~   phases=3
+~   conn=wye
+~   kV=0.4
+~   Pmpp=2000                  // 2 MW
+~   irradiance=1
+~   %Cutin=5
+~   %Cutout=5
+~   effcurve=InverterEff
+~   daily=Solar_20250801
+~   %Pmpp=100
+~   kVA=2200
+~   pf=1.0
+
+// ============================================================================
+// SOLAR SUMMARY
+// ============================================================================
+// Feeder    PV Capacity (MW)    Export %    Notes
+// F06       10.14               16.3%       Industrial, all net metering
+// F07       9.17                19.6%       Mixed, net metering
+// F08       5.44                9.0%        Distribution
+// F09       0.35                23.7%       Rural, mostly self-consumption
+// F10       7.00                25.7%       Coastal
+// F11       10.22               56.2%       Urban, heavy net metering
+// F12       5.00                18.3%       Tie feeder
+// -----------------------------------------------
+// TOTAL     47.32 MW (matches actual ~42-48 MW connected)
+// ============================================================================
+
+// ============================================================================
+// END OF ROOFTOP SOLAR
+// ============================================================================

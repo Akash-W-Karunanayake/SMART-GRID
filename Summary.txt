@@ -1,0 +1,72 @@
+All files created. Let me do a final verification of the modified DSS files and backend to ensure correctness:                                                                                                                                                                                                                                                  
+● Bash(cd "C:\Users\D E L L\Desktop\Data pre-processing for Machine Learning in Python\GRID_SIMULATION" && echo "=== Households.dss daily= count ===" && grep -c "daily…)        
+  ⎿  === Households.dss daily= count ===                                                                                                                                              22                                                                                                                                                                          
+     … +8 lines (ctrl+o to expand)                                                                                                                                                                                                                                                                                                                                
+● All counts match the plan exactly:                                                                                                                                             
+  - 22 loads updated in Households.dss                                                                                                                                             - 20 PV systems updated in RooftopSolar.dss                                                                                                                                    
+  - 4 generators updated in Generators.dss (3 UJPS + 1 Wind)                                                                                                                       - 10 Redirect lines added in LoadShapes.dss                                                                                                                                    
+                                                                                                                                                                                 
+  Let me update memory with key learnings:
+
+● Wrote 1 memory (ctrl+o to expand)       
+    
+● Here's a summary of everything implemented:
+                                                                                                                                                                                   Implementation Complete
+                                                                                                                                                                                   New Files Created (17 files):
+  ┌───────────────┬───────────────────────────────────────────────────────┬──────────────────────────────────────────────────────────────────┐                                   
+  │   Category    │                         File                          │                             Purpose                              │
+  ├───────────────┼───────────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────┤
+  │ Config        │ scripts/config.py                                     │ Paths, FEEDER_LOADS/PV mappings, synthetic profiles, constants   │
+  ├───────────────┼───────────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────┤
+  │ Pipeline      │ scripts/pipeline.py                                   │ Orchestrator with --date, --validate, --skip-preprocessing flags │
+  ├───────────────┼───────────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────┤
+  │ Preprocessing │ scripts/data_preprocessing/parse_load_profiles.py     │ Parses 32 XLS files → load_profiles_cleaned.csv                  │
+  ├───────────────┼───────────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────┤
+  │ Preprocessing │ scripts/data_preprocessing/parse_solar.py             │ NASA GHI → 15-min interpolated solar_15min.csv                   │
+  ├───────────────┼───────────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────┤
+  │ Preprocessing │ scripts/data_preprocessing/parse_wind.py              │ NASA wind → power curve → wind_15min.csv                         │
+  ├───────────────┼───────────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────┤
+  │ Generation    │ scripts/loadshape_generation/disaggregate.py          │ Net load decomposition → per-load multiplier arrays              │
+  ├───────────────┼───────────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────┤
+  │ Generation    │ scripts/loadshape_generation/generate_load_shapes.py  │ Per-feeder DSS files (F06-F12)                                   │
+  ├───────────────┼───────────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────┤
+  │ Generation    │ scripts/loadshape_generation/generate_solar_shapes.py │ Solar_YYYYMMDD.dss                                               │
+  ├───────────────┼───────────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────┤
+  │ Generation    │ scripts/loadshape_generation/generate_wind_shapes.py  │ Wind_YYYYMMDD.dss                                                │
+  ├───────────────┼───────────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────┤
+  │ Generation    │ scripts/loadshape_generation/generate_ujps_shapes.py  │ UJPS_YYYYMMDD.dss                                                │
+  ├───────────────┼───────────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────┤
+  │ Validation    │ scripts/validation/validate_results.py                │ MAE/MAPE/Correlation metrics                                     │
+  ├───────────────┼───────────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────┤
+  │ Init files    │ 4x __init__.py                                        │ Package markers                                                  │
+  └───────────────┴───────────────────────────────────────────────────────┴──────────────────────────────────────────────────────────────────┘
+  Existing Files Modified (8 files):
+  ┌────────────────────────────┬───────────────────────────────────────────────────────────────────────────┐
+  │            File            │                                  Changes                                  │
+  ├────────────────────────────┼───────────────────────────────────────────────────────────────────────────┤
+  │ Master.dss                 │ mode=daily, added stepsize=15m, number=96                                 │
+  ├────────────────────────────┼───────────────────────────────────────────────────────────────────────────┤
+  │ LoadShapes.dss             │ Appended 10 Redirect LoadShapes_RealData/... lines                        │
+  ├────────────────────────────┼───────────────────────────────────────────────────────────────────────────┤
+  │ Households.dss             │ Changed daily= on all 22 loads to date-stamped real shapes                │
+  ├────────────────────────────┼───────────────────────────────────────────────────────────────────────────┤
+  │ RooftopSolar.dss           │ Changed daily= on all 20 PV systems to Solar_20250801                     │
+  ├────────────────────────────┼───────────────────────────────────────────────────────────────────────────┤
+  │ Generators.dss             │ Changed daily= on 3 UJPS gens to UJPS_20250801, WindFarm to Wind_20250801 │
+  ├────────────────────────────┼───────────────────────────────────────────────────────────────────────────┤
+  │ opendss_service.py         │ Added run_daily_simulation() method (LoadShape-driven, 96 steps)          │
+  ├────────────────────────────┼───────────────────────────────────────────────────────────────────────────┤
+  │ simulation_service.py      │ Added mode parameter, _real_data_simulation_loop() method                 │
+  ├────────────────────────────┼───────────────────────────────────────────────────────────────────────────┤
+  │ simulation.py + schemas.py │ Added mode and target_date fields to start request/status                 │
+  └────────────────────────────┴───────────────────────────────────────────────────────────────────────────┘
+  Usage:
+
+  # Run full pipeline (preprocessing + disaggregation + shape generation)
+  python scripts/pipeline.py --date 2025-08-01
+
+  # With validation
+  python scripts/pipeline.py --date 2025-08-01 --validate
+
+  # Start backend with real data mode
+  POST /simulation/start {"mode": "real_data", "hours": 24}

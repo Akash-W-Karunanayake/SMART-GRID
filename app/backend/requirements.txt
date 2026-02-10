@@ -1,0 +1,29 @@
+# FastAPI and server
+fastapi==0.109.2
+uvicorn[standard]==0.27.1
+python-multipart==0.0.9
+websockets==12.0
+
+# OpenDSS integration
+opendssdirect.py==0.9.4
+
+# Data processing
+numpy==1.26.4
+pandas==2.2.0
+
+# Database (optional - for future use)
+sqlalchemy==2.0.25
+asyncpg==0.29.0
+
+# Utilities
+python-dotenv==1.0.1
+pydantic==2.6.1
+pydantic-settings==2.1.0
+
+# CORS
+aiofiles==23.2.1
+
+# For ML/DL integration (future)
+# torch>=2.0.0
+# tensorflow>=2.15.0
+# scikit-learn>=1.4.0

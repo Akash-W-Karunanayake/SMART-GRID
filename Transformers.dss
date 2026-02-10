@@ -1,0 +1,364 @@
+// ============================================================================
+// CHUNNAKAM GRID - TRANSFORMERS
+// ============================================================================
+// Grid Transformers: 132/33 kV (TR2, TR3 as per SLD)
+// Distribution Transformers: 33/0.4 kV for household connections
+//
+// Note: TR1 is excluded as per specification (future expansion)
+//
+// DT SIZING: Each DT represents an AGGREGATED distribution area.
+// kVA ratings are sized to handle max(load_kW, PV_kW) with margin,
+// since loads and PV are connected at the same LV bus behind each DT.
+// ============================================================================
+
+// ----------------------------------------------------------------------------
+// GRID TRANSFORMERS - 132/33 kV
+// ----------------------------------------------------------------------------
+// Two 31.5 MVA transformers feeding the 33kV bus
+// Configuration: Dyn11 (Delta primary, Star secondary with neutral)
+// OLTC: On-Load Tap Changer for voltage regulation
+
+// Transformer TR2 - Feeds Bus Section A (F05, F06, F07, F08)
+New Transformer.TR2
+~   phases=3
+~   windings=2
+~   buses=[Source_132kV.1.2.3, Bus_33kV_A.1.2.3.0]
+~   conns=[delta, wye]
+~   kvs=[132, 33]
+~   kvas=[31500, 31500]
+~   %Rs=[0.35, 0.35]           // Winding resistances
+~   xhl=12.5                    // Impedance 12.5% (CEB standard)
+~   %noloadloss=0.08            // No-load/iron losses
+~   %imag=0.5                   // Magnetizing current
+~   normhkva=31500
+~   emerghkva=37800             // 120% emergency rating
+~   taps=[1.0, 1.0]
+~   maxtap=1.1                  // +10% tap range
+~   mintap=0.9                  // -10% tap range
+~   numtaps=17                  // 17 tap positions
+~   basefreq=50
+
+// Transformer TR3 - Feeds Bus Section B (F09, F10, F11, F12)
+New Transformer.TR3
+~   phases=3
+~   windings=2
+~   buses=[Source_132kV.1.2.3, Bus_33kV_B.1.2.3.0]
+~   conns=[delta, wye]
+~   kvs=[132, 33]
+~   kvas=[31500, 31500]
+~   %Rs=[0.35, 0.35]
+~   xhl=12.5
+~   %noloadloss=0.08
+~   %imag=0.5
+~   normhkva=31500
+~   emerghkva=37800
+~   taps=[1.0, 1.0]
+~   maxtap=1.1
+~   mintap=0.9
+~   numtaps=17
+~   basefreq=50
+
+// ----------------------------------------------------------------------------
+// DISTRIBUTION TRANSFORMERS - 33/0.4 kV
+// ----------------------------------------------------------------------------
+// These connect the 33kV feeders to household-level loads
+// Sized to handle aggregated load + PV capacity at each location
+
+// --- F06 (KKS Industrial) Distribution Transformers ---
+// DT_F06_1: Industrial zone - serves 4000 kW load + 5000 kW PV
+New Transformer.DT_F06_1
+~   phases=3  windings=2
+~   buses=[F06_Node2.1.2.3, F06_LV1.1.2.3.0]
+~   conns=[delta, wye]
+~   kvs=[33, 0.4]
+~   kvas=[6300, 6300]
+~   %Rs=[0.4, 0.4]
+~   xhl=6.5
+~   %noloadloss=0.10
+~   %imag=0.8
+~   basefreq=50
+
+// DT_F06_2: Small industry - serves 1500 kW load + 3500 kW PV
+New Transformer.DT_F06_2
+~   phases=3  windings=2
+~   buses=[F06_Node3.1.2.3, F06_LV2.1.2.3.0]
+~   conns=[delta, wye]
+~   kvs=[33, 0.4]
+~   kvas=[5000, 5000]
+~   %Rs=[0.4, 0.4]
+~   xhl=6.0
+~   %noloadloss=0.10
+~   %imag=0.8
+~   basefreq=50
+
+// DT_F06_3: Residential near industrial - serves 700 kW load + 1640 kW PV
+New Transformer.DT_F06_3
+~   phases=3  windings=2
+~   buses=[F06_Node4.1.2.3, F06_LV3.1.2.3.0]
+~   conns=[delta, wye]
+~   kvs=[33, 0.4]
+~   kvas=[2500, 2500]
+~   %Rs=[0.45, 0.45]
+~   xhl=6.0
+~   %noloadloss=0.12
+~   %imag=0.9
+~   basefreq=50
+
+// --- F07 (Vaddu Mixed/Agriculture) Distribution Transformers ---
+// DT_F07_1: Village center - serves 2500 kW load + 4000 kW PV
+New Transformer.DT_F07_1
+~   phases=3  windings=2
+~   buses=[F07_Node2.1.2.3, F07_LV1.1.2.3.0]
+~   conns=[delta, wye]
+~   kvs=[33, 0.4]
+~   kvas=[5000, 5000]
+~   %Rs=[0.4, 0.4]
+~   xhl=6.0
+~   %noloadloss=0.10
+~   %imag=0.8
+~   basefreq=50
+
+// DT_F07_2: Agricultural area - serves 3000 kW load + 3500 kW PV
+New Transformer.DT_F07_2
+~   phases=3  windings=2
+~   buses=[F07_Node3.1.2.3, F07_LV2.1.2.3.0]
+~   conns=[delta, wye]
+~   kvs=[33, 0.4]
+~   kvas=[5000, 5000]
+~   %Rs=[0.4, 0.4]
+~   xhl=6.0
+~   %noloadloss=0.10
+~   %imag=0.8
+~   basefreq=50
+
+// DT_F07_3: Scattered rural residences - serves 2300 kW load + 1670 kW PV
+New Transformer.DT_F07_3
+~   phases=3  windings=2
+~   buses=[F07_Node4.1.2.3, F07_LV3.1.2.3.0]
+~   conns=[delta, wye]
+~   kvs=[33, 0.4]
+~   kvas=[3150, 3150]
+~   %Rs=[0.45, 0.45]
+~   xhl=6.0
+~   %noloadloss=0.12
+~   %imag=0.9
+~   basefreq=50
+
+// --- F08 (Kompanai) Distribution Transformers ---
+// DT_F08_1: Main commercial area - serves 5000 kW load + 2500 kW PV
+New Transformer.DT_F08_1
+~   phases=3  windings=2
+~   buses=[F08_Node2.1.2.3, F08_LV1.1.2.3.0]
+~   conns=[delta, wye]
+~   kvs=[33, 0.4]
+~   kvas=[6300, 6300]
+~   %Rs=[0.4, 0.4]
+~   xhl=6.5
+~   %noloadloss=0.10
+~   %imag=0.8
+~   basefreq=50
+
+// DT_F08_2: Residential cluster - serves 4500 kW load + 2000 kW PV
+New Transformer.DT_F08_2
+~   phases=3  windings=2
+~   buses=[F08_Node3.1.2.3, F08_LV2.1.2.3.0]
+~   conns=[delta, wye]
+~   kvs=[33, 0.4]
+~   kvas=[5000, 5000]
+~   %Rs=[0.4, 0.4]
+~   xhl=6.0
+~   %noloadloss=0.10
+~   %imag=0.8
+~   basefreq=50
+
+// DT_F08_3: Mixed use area - serves 3100 kW load + 940 kW PV
+New Transformer.DT_F08_3
+~   phases=3  windings=2
+~   buses=[F08_Node4.1.2.3, F08_LV3.1.2.3.0]
+~   conns=[delta, wye]
+~   kvs=[33, 0.4]
+~   kvas=[4000, 4000]
+~   %Rs=[0.45, 0.45]
+~   xhl=6.0
+~   %noloadloss=0.12
+~   %imag=0.9
+~   basefreq=50
+
+// --- F09 (Chavakachcheri Rural) Distribution Transformers ---
+// Rural area - lower PV penetration
+// DT_F09_1: Small town center - serves 2200 kW load + 200 kW PV
+New Transformer.DT_F09_1
+~   phases=3  windings=2
+~   buses=[F09_Node2.1.2.3, F09_LV1.1.2.3.0]
+~   conns=[delta, wye]
+~   kvs=[33, 0.4]
+~   kvas=[3150, 3150]
+~   %Rs=[0.45, 0.45]
+~   xhl=6.0
+~   %noloadloss=0.12
+~   %imag=0.9
+~   basefreq=50
+
+// DT_F09_2: Village cluster - serves 1800 kW load + 150 kW PV
+New Transformer.DT_F09_2
+~   phases=3  windings=2
+~   buses=[F09_Node3.1.2.3, F09_LV2.1.2.3.0]
+~   conns=[delta, wye]
+~   kvs=[33, 0.4]
+~   kvas=[2500, 2500]
+~   %Rs=[0.45, 0.45]
+~   xhl=6.0
+~   %noloadloss=0.12
+~   %imag=0.9
+~   basefreq=50
+
+// DT_F09_3: Scattered rural - serves 2000 kW load, no PV
+New Transformer.DT_F09_3
+~   phases=3  windings=2
+~   buses=[F09_Node4.1.2.3, F09_LV3.1.2.3.0]
+~   conns=[delta, wye]
+~   kvs=[33, 0.4]
+~   kvas=[2500, 2500]
+~   %Rs=[0.45, 0.45]
+~   xhl=6.0
+~   %noloadloss=0.12
+~   %imag=0.9
+~   basefreq=50
+
+// DT_F09_4: Remote farming area - serves 1200 kW load, no PV
+New Transformer.DT_F09_4
+~   phases=3  windings=2
+~   buses=[F09_Node5.1.2.3, F09_LV4.1.2.3.0]
+~   conns=[delta, wye]
+~   kvs=[33, 0.4]
+~   kvas=[1600, 1600]
+~   %Rs=[0.5, 0.5]
+~   xhl=5.5
+~   %noloadloss=0.15
+~   %imag=1.0
+~   basefreq=50
+
+// --- F10 (Point Pedro Coastal) Distribution Transformers ---
+// DT_F10_1: Main town - serves 5500 kW load + 3500 kW PV
+New Transformer.DT_F10_1
+~   phases=3  windings=2
+~   buses=[F10_Node2.1.2.3, F10_LV1.1.2.3.0]
+~   conns=[delta, wye]
+~   kvs=[33, 0.4]
+~   kvas=[6300, 6300]
+~   %Rs=[0.4, 0.4]
+~   xhl=6.5
+~   %noloadloss=0.10
+~   %imag=0.8
+~   basefreq=50
+
+// DT_F10_2: Fishing village - serves 4000 kW load + 2000 kW PV
+New Transformer.DT_F10_2
+~   phases=3  windings=2
+~   buses=[F10_Node3.1.2.3, F10_LV2.1.2.3.0]
+~   conns=[delta, wye]
+~   kvs=[33, 0.4]
+~   kvas=[5000, 5000]
+~   %Rs=[0.4, 0.4]
+~   xhl=6.0
+~   %noloadloss=0.10
+~   %imag=0.8
+~   basefreq=50
+
+// DT_F10_3: Coastal residential - serves 3100 kW load + 1500 kW PV
+New Transformer.DT_F10_3
+~   phases=3  windings=2
+~   buses=[F10_Node4.1.2.3, F10_LV3.1.2.3.0]
+~   conns=[delta, wye]
+~   kvs=[33, 0.4]
+~   kvas=[4000, 4000]
+~   %Rs=[0.45, 0.45]
+~   xhl=6.0
+~   %noloadloss=0.12
+~   %imag=0.9
+~   basefreq=50
+
+// --- F11 (Jaffna Town Urban) Distribution Transformers ---
+// Highest load density and PV penetration
+// DT_F11_1: Jaffna Teaching Hospital - serves 2500 kW load + 1500 kW PV
+New Transformer.DT_F11_Hospital
+~   phases=3  windings=2
+~   buses=[F11_Node2.1.2.3, F11_LV_Hospital.1.2.3.0]
+~   conns=[delta, wye]
+~   kvs=[33, 0.4]
+~   kvas=[3150, 3150]
+~   %Rs=[0.45, 0.45]
+~   xhl=6.0
+~   %noloadloss=0.12
+~   %imag=0.9
+~   basefreq=50
+
+// DT_F11_2: Town center commercial - serves 4500 kW load + 3500 kW PV
+New Transformer.DT_F11_Commercial
+~   phases=3  windings=2
+~   buses=[F11_Node3.1.2.3, F11_LV_Commercial.1.2.3.0]
+~   conns=[delta, wye]
+~   kvs=[33, 0.4]
+~   kvas=[6300, 6300]
+~   %Rs=[0.4, 0.4]
+~   xhl=6.5
+~   %noloadloss=0.10
+~   %imag=0.8
+~   basefreq=50
+
+// DT_F11_3: Residential apartments - serves 4000 kW load + 3000 kW PV
+New Transformer.DT_F11_Residential1
+~   phases=3  windings=2
+~   buses=[F11_Node4.1.2.3, F11_LV_Res1.1.2.3.0]
+~   conns=[delta, wye]
+~   kvs=[33, 0.4]
+~   kvas=[5000, 5000]
+~   %Rs=[0.4, 0.4]
+~   xhl=6.0
+~   %noloadloss=0.10
+~   %imag=0.8
+~   basefreq=50
+
+// DT_F11_4: Mixed residential/shops - serves 3400 kW load + 2220 kW PV
+New Transformer.DT_F11_Residential2
+~   phases=3  windings=2
+~   buses=[F11_Node5.1.2.3, F11_LV_Res2.1.2.3.0]
+~   conns=[delta, wye]
+~   kvs=[33, 0.4]
+~   kvas=[5000, 5000]
+~   %Rs=[0.4, 0.4]
+~   xhl=6.0
+~   %noloadloss=0.10
+~   %imag=0.8
+~   basefreq=50
+
+// --- F12 (Tie Feeder) Distribution Transformers ---
+// DT_F12_1: Residential area - serves 7000 kW load + 3000 kW PV
+New Transformer.DT_F12_1
+~   phases=3  windings=2
+~   buses=[F12_Node2.1.2.3, F12_LV1.1.2.3.0]
+~   conns=[delta, wye]
+~   kvs=[33, 0.4]
+~   kvas=[8000, 8000]
+~   %Rs=[0.4, 0.4]
+~   xhl=6.5
+~   %noloadloss=0.10
+~   %imag=0.8
+~   basefreq=50
+
+// DT_F12_2: Mixed residential - serves 5700 kW load + 2000 kW PV
+New Transformer.DT_F12_2
+~   phases=3  windings=2
+~   buses=[F12_Node3.1.2.3, F12_LV2.1.2.3.0]
+~   conns=[delta, wye]
+~   kvs=[33, 0.4]
+~   kvas=[6300, 6300]
+~   %Rs=[0.4, 0.4]
+~   xhl=6.5
+~   %noloadloss=0.10
+~   %imag=0.8
+~   basefreq=50
+
+// ============================================================================
+// END OF TRANSFORMERS
+// ============================================================================

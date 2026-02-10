@@ -1,0 +1,103 @@
+================================================================================
+PROJECT LOG - Smart Grid AI Framework (Chunnakam GSS, Jaffna)
+================================================================================
+
+[2026-02-05 20:32] - SESSION START
+- Reviewed the entire project structure and current development state.
+- Created this log file to track progress across sessions.
+
+--- SUMMARY OF COMPLETED WORK (as of this date) ---
+
+1. OpenDSS Power System Model: COMPLETE
+   - Full 132/33/0.4 kV grid model for Chunnakam GSS (200+ elements)
+   - 8 feeders (F05-F12), 22 household loads (73.5 MW peak), 21 distribution transformers
+   - 47.32 MW rooftop solar PV, 24 MW thermal (UJPS), 20 MW wind generation
+   - Switching infrastructure: 8 CBs, 8 sectionalizers, 5 tie switches
+   - 40+ monitoring points defined
+   - 24-hour load/generation shapes implemented
+   - Critical bugs fixed: voltage base propagation order, 50 Hz frequency, bus node specs
+
+2. Backend (FastAPI + Python): COMPLETE (structure)
+   - REST API with 20+ endpoints (grid, simulation, forecasting, diagnostics)
+   - OpenDSS integration service (load, solve, extract state, topology)
+   - WebSocket support for real-time updates
+   - Pydantic schemas for all data models
+   - API stubs ready for all 4 ML research components
+
+3. Frontend (React + TypeScript): COMPLETE (structure)
+   - 7 pages: Dashboard, GridViewer, SelfHealing, Forecasting, Diagnostics, NetLoad, Settings
+   - ReactFlow-based interactive grid visualization with icon mapping
+   - Zustand state management, React Query, Recharts
+   - WebSocket client for real-time streaming
+   - Tailwind CSS styling
+
+4. Validation & Testing Scripts: COMPLETE
+   - 24-hour simulation runner, grid diagnostics, switch testing, model validation
+
+--- PENDING WORK ---
+
+- ML model integration for all 4 research components:
+  * Net Load Forecasting (IT22891204) - ICEEMDAN + Transformer + GP-RML
+  * Grid Stability / High PV Penetration (IT22360182)
+  * Fault Diagnostics (IT22577924) - CNN-Transformer + R-GNN
+  * Self-Healing Grid (IT22053350) - MARL + GNN
+- Real-time simulation loop (hourly stepping with load shape application)
+- Dashboard metric calculations
+- Error handling and edge cases
+- Unit/integration tests
+- Deployment containerization (Docker)
+
+--------------------------------------------------------------------------------
+
+[2026-02-05 20:53] - BUG FIXES: Simulation Controls + Convergence
+- Reviewed backend_log.txt for latest runtime behavior.
+- Identified and fixed 4 bugs:
+
+  BUG 1: Stop/Pause buttons not reflecting in frontend UI (FIXED)
+    Root cause: Backend sent {type:"response"} messages for stop/pause/resume,
+    but frontend useWebSocket.ts only handled state_update/status/error/info.
+    The Zustand store simulationStatus.running/paused never got updated.
+    Fix (backend): Added _broadcast_status() in handlers.py that broadcasts
+    a {type:"status"} message to ALL connected clients after every control
+    action (start/stop/pause/resume).
+    Fix (frontend): Added "response" case in useWebSocket.ts handleMessage
+    that requests fresh status via wsService.getStatus().
+    Files changed: handlers.py, useWebSocket.ts
+
+  BUG 2: Step/Skip button not applying load and solar profiles (FIXED)
+    Root cause: simulation_service.py step() just called get_grid_state()
+    without first applying _get_load_profile() and _get_solar_profile()
+    multipliers. The main loop applied them but step() didn't.
+    Fix: Added load/generation profile application to step() method,
+    matching the same logic used in _simulation_loop().
+    Also added history tracking to step() so stepped data appears in charts.
+    Files changed: simulation_service.py
+
+  BUG 3: Stop not fully resetting simulation state (FIXED)
+    Root cause: stop() didn't reset _paused to False or _simulation_task
+    to None. After stopping, stale state could prevent clean restart.
+    Fix: Added _paused=False and _simulation_task=None in both stop()
+    and the _simulation_loop finally block.
+    Files changed: simulation_service.py
+
+  BUG 4: Convergence and voltage violations (IMPROVED)
+    Changes:
+    - Changed controlmode from "off" to "static" (allows voltage regulators)
+    - Added Normal current injection as second solver attempt before relaxing
+      tolerance (Newton -> Normal -> Newton relaxed -> very relaxed)
+    - Upgraded convergence failure logs from DEBUG to WARNING/INFO so they
+      appear in the server log
+    - Added per-step logging in simulation loop for non-convergence and
+      voltage violations (includes load/solar multiplier values for debugging)
+    Files changed: opendss_service.py, simulation_service.py
+
+--- STILL PENDING ---
+
+- Voltage violations may still occur at high-load hours with low solar.
+  This is a model-level issue (47 MW PV through ~10 MVA transformers).
+  May need DSS model tuning or additional voltage regulation.
+- ML model integration for all 4 research components
+- Dashboard metric calculations
+- Unit/integration tests
+
+================================================================================

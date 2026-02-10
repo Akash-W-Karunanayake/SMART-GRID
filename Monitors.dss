@@ -1,0 +1,340 @@
+// ============================================================================
+// CHUNNAKAM GRID - MONITORS AND MEASUREMENT POINTS
+// ============================================================================
+// Monitoring infrastructure for all four research components:
+// 1. Net Load Forecasting (IT22891204) - Transformer power flow
+// 2. Grid Stability (IT22360182) - Bus voltages, PV output
+// 3. Fault Diagnostics (IT22577924) - Current/voltage waveforms
+// 4. Self-Healing (IT22053350) - Switch states, load restoration
+//
+// MONITOR MODES:
+// Mode 0: Voltage and Current magnitudes
+// Mode 1: Power (P, Q)
+// Mode 2: Tap position (for transformers)
+// Mode 32: Sequence voltages/currents
+// Mode 48: Sequence components (positive, negative, zero)
+// ============================================================================
+
+// ----------------------------------------------------------------------------
+// TRANSFORMER MONITORS (Net Load Forecasting)
+// ----------------------------------------------------------------------------
+// These measure the net power flow through the grid transformers
+// Net Load = Total Load - Total Generation (Solar + Wind + Thermal export)
+
+// TR2 Power Monitor (Bus A feeders: F05, F06, F07, F08)
+New Monitor.Mon_TR2_Power
+~   element=Transformer.TR2
+~   terminal=2                  // 33kV side
+~   mode=1                      // P, Q power
+~   ppolar=no
+
+// TR2 Voltage Monitor
+New Monitor.Mon_TR2_Voltage
+~   element=Transformer.TR2
+~   terminal=2
+~   mode=0                      // V, I magnitudes
+~   ppolar=yes
+
+// TR3 Power Monitor (Bus B feeders: F09, F10, F11, F12)
+New Monitor.Mon_TR3_Power
+~   element=Transformer.TR3
+~   terminal=2
+~   mode=1
+~   ppolar=no
+
+// TR3 Voltage Monitor
+New Monitor.Mon_TR3_Voltage
+~   element=Transformer.TR3
+~   terminal=2
+~   mode=0
+~   ppolar=yes
+
+// ----------------------------------------------------------------------------
+// 33 kV BUS VOLTAGE MONITORS (Grid Stability)
+// ----------------------------------------------------------------------------
+// Monitor voltage at each 33kV bus section for stability analysis
+
+// Bus A Voltage (connected to TR2) - Using CB_F06 at feeder head
+New Monitor.Mon_Bus33A_Voltage
+~   element=Line.CB_F06
+~   terminal=1
+~   mode=0
+~   ppolar=yes
+
+// Bus B Voltage (connected to TR3) - Using CB_F09 at feeder head
+New Monitor.Mon_Bus33B_Voltage
+~   element=Line.CB_F09
+~   terminal=1
+~   mode=0
+~   ppolar=yes
+
+// ----------------------------------------------------------------------------
+// FEEDER HEAD MONITORS (Circuit Breakers - All feeders)
+// ----------------------------------------------------------------------------
+// Monitor power flow at the head of each feeder via Circuit Breakers
+
+// F05 (UJPS Generation)
+New Monitor.Mon_F05_Power
+~   element=Line.CB_F05
+~   terminal=1
+~   mode=1
+~   ppolar=no
+
+// F06 (KKS Industrial)
+New Monitor.Mon_F06_Power
+~   element=Line.CB_F06
+~   terminal=1
+~   mode=1
+~   ppolar=no
+
+// F07 (Vaddu)
+New Monitor.Mon_F07_Power
+~   element=Line.CB_F07
+~   terminal=1
+~   mode=1
+~   ppolar=no
+
+// F08 (Kompanai)
+New Monitor.Mon_F08_Power
+~   element=Line.CB_F08
+~   terminal=1
+~   mode=1
+~   ppolar=no
+
+// F09 (Chavakachcheri Rural) - KEY for Fault Diagnostics
+New Monitor.Mon_F09_Power
+~   element=Line.CB_F09
+~   terminal=1
+~   mode=1
+~   ppolar=no
+
+// F10 (Point Pedro)
+New Monitor.Mon_F10_Power
+~   element=Line.CB_F10
+~   terminal=1
+~   mode=1
+~   ppolar=no
+
+// F11 (Jaffna Town) - KEY for Grid Stability
+New Monitor.Mon_F11_Power
+~   element=Line.CB_F11
+~   terminal=1
+~   mode=1
+~   ppolar=no
+
+// F12 (Tie Feeder)
+New Monitor.Mon_F12_Power
+~   element=Line.CB_F12
+~   terminal=1
+~   mode=1
+~   ppolar=no
+
+// ----------------------------------------------------------------------------
+// FAULT DETECTION MONITORS (Fault Diagnostics)
+// ----------------------------------------------------------------------------
+// High-resolution current monitoring at key locations
+// Mode 0 captures V and I magnitudes at each time step
+
+// F09 Feeder Head (main fault detection point for rural line)
+New Monitor.Mon_F09_Fault
+~   element=Line.CB_F09
+~   terminal=1
+~   mode=0                      // V, I magnitudes
+~   ppolar=yes
+
+// F09 Section 2 (after first sectionalizer)
+New Monitor.Mon_F09_Sec2
+~   element=Line.F09_Sec2
+~   terminal=1
+~   mode=0
+~   ppolar=yes
+
+// F09 Section 3 (midpoint of feeder)
+New Monitor.Mon_F09_Sec3
+~   element=Line.F09_Sec3
+~   terminal=1
+~   mode=0
+~   ppolar=yes
+
+// F09 Section 4 (towards end of feeder)
+New Monitor.Mon_F09_Sec4
+~   element=Line.F09_Sec4
+~   terminal=1
+~   mode=0
+~   ppolar=yes
+
+// F09 Section 5 (end of feeder - remote area)
+New Monitor.Mon_F09_Sec5
+~   element=Line.F09_Sec5
+~   terminal=1
+~   mode=0
+~   ppolar=yes
+
+// F11 Urban Fault Monitor
+New Monitor.Mon_F11_Fault
+~   element=Line.CB_F11
+~   terminal=1
+~   mode=0
+~   ppolar=yes
+
+// F06 Industrial Fault Monitor
+New Monitor.Mon_F06_Fault
+~   element=Line.CB_F06
+~   terminal=1
+~   mode=0
+~   ppolar=yes
+
+// ----------------------------------------------------------------------------
+// SEQUENCE COMPONENT MONITORS (Fault Diagnostics)
+// ----------------------------------------------------------------------------
+// Mode 48 provides positive, negative, zero sequence components
+// Essential for fault classification (LG, LL, LLG, LLL)
+
+// F09 Sequence Monitor
+New Monitor.Mon_F09_Sequence
+~   element=Line.CB_F09
+~   terminal=1
+~   mode=48                     // Sequence components
+~   ppolar=no
+
+// F11 Sequence Monitor
+New Monitor.Mon_F11_Sequence
+~   element=Line.CB_F11
+~   terminal=1
+~   mode=48
+~   ppolar=no
+
+// ============================================================================
+// SWITCH MONITORS (Self-Healing / FLISR Research)
+// ============================================================================
+// Monitors for all 21 switches in the MARL action space
+
+// ----------------------------------------------------------------------------
+// CIRCUIT BREAKER MONITORS (8 total)
+// ----------------------------------------------------------------------------
+// Monitor power flow and state at each CB for fault isolation
+
+New Monitor.Mon_CB_F05 Element=Line.CB_F05 Terminal=1 Mode=1 PPolar=no
+New Monitor.Mon_CB_F06 Element=Line.CB_F06 Terminal=1 Mode=1 PPolar=no
+New Monitor.Mon_CB_F07 Element=Line.CB_F07 Terminal=1 Mode=1 PPolar=no
+New Monitor.Mon_CB_F08 Element=Line.CB_F08 Terminal=1 Mode=1 PPolar=no
+New Monitor.Mon_CB_F09 Element=Line.CB_F09 Terminal=1 Mode=1 PPolar=no
+New Monitor.Mon_CB_F10 Element=Line.CB_F10 Terminal=1 Mode=1 PPolar=no
+New Monitor.Mon_CB_F11 Element=Line.CB_F11 Terminal=1 Mode=1 PPolar=no
+New Monitor.Mon_CB_F12 Element=Line.CB_F12 Terminal=1 Mode=1 PPolar=no
+
+// ----------------------------------------------------------------------------
+// SECTIONALIZER MONITORS (8 total)
+// ----------------------------------------------------------------------------
+// Monitor power flow at each sectionalizer for zone isolation
+
+New Monitor.Mon_SEC_F05 Element=Line.SEC_F05 Terminal=1 Mode=1 PPolar=no
+New Monitor.Mon_SEC_F06 Element=Line.SEC_F06 Terminal=1 Mode=1 PPolar=no
+New Monitor.Mon_SEC_F07 Element=Line.SEC_F07 Terminal=1 Mode=1 PPolar=no
+New Monitor.Mon_SEC_F08 Element=Line.SEC_F08 Terminal=1 Mode=1 PPolar=no
+New Monitor.Mon_SEC_F09 Element=Line.SEC_F09 Terminal=1 Mode=1 PPolar=no
+New Monitor.Mon_SEC_F10 Element=Line.SEC_F10 Terminal=1 Mode=1 PPolar=no
+New Monitor.Mon_SEC_F11 Element=Line.SEC_F11 Terminal=1 Mode=1 PPolar=no
+New Monitor.Mon_SEC_F12 Element=Line.SEC_F12 Terminal=1 Mode=1 PPolar=no
+
+// ----------------------------------------------------------------------------
+// TIE SWITCH MONITORS (5 total)
+// ----------------------------------------------------------------------------
+// Monitor power flow through tie switches for load transfer tracking
+
+// Section A Tie Switches
+New Monitor.Mon_Tie_F06_F07 Element=Line.Tie_F06_F07 Terminal=1 Mode=1 PPolar=no
+New Monitor.Mon_Tie_F07_F08 Element=Line.Tie_F07_F08 Terminal=1 Mode=1 PPolar=no
+
+// Section B Tie Switches
+New Monitor.Mon_Tie_F09_F10 Element=Line.Tie_F09_F10 Terminal=1 Mode=1 PPolar=no
+New Monitor.Mon_Tie_F10_F11 Element=Line.Tie_F10_F11 Terminal=1 Mode=1 PPolar=no
+
+// Bus Coupler (Cross-section tie)
+New Monitor.Mon_BusCoupler Element=Line.BusCoupler Terminal=1 Mode=1 PPolar=no
+
+// ----------------------------------------------------------------------------
+// GENERATOR MONITORS
+// ----------------------------------------------------------------------------
+
+// UJPS Total Output
+New Monitor.Mon_UJPS
+~   element=Line.F05_Sec3       // Line to UJPS
+~   terminal=2
+~   mode=1
+~   ppolar=no
+
+// Wind Farm Output
+New Monitor.Mon_Wind
+~   element=Line.F11_Wind_Spur
+~   terminal=2
+~   mode=1
+~   ppolar=no
+
+// ----------------------------------------------------------------------------
+// ENERGY METERS (for load flow summaries)
+// ----------------------------------------------------------------------------
+
+// Transformer energy meters
+New EnergyMeter.EM_TR2
+~   element=Transformer.TR2
+~   terminal=2
+
+New EnergyMeter.EM_TR3
+~   element=Transformer.TR3
+~   terminal=2
+
+// Feeder energy meters (at Circuit Breakers)
+New EnergyMeter.EM_F05  element=Line.CB_F05  terminal=1
+New EnergyMeter.EM_F06  element=Line.CB_F06  terminal=1
+New EnergyMeter.EM_F07  element=Line.CB_F07  terminal=1
+New EnergyMeter.EM_F08  element=Line.CB_F08  terminal=1
+New EnergyMeter.EM_F09  element=Line.CB_F09  terminal=1
+New EnergyMeter.EM_F10  element=Line.CB_F10  terminal=1
+New EnergyMeter.EM_F11  element=Line.CB_F11  terminal=1
+New EnergyMeter.EM_F12  element=Line.CB_F12  terminal=1
+
+// ============================================================================
+// MONITOR USAGE BY RESEARCH COMPONENT
+// ============================================================================
+//
+// NET LOAD FORECASTING (IT22891204):
+//   - Mon_TR2_Power, Mon_TR3_Power: Net load at substation
+//   - EM_TR2, EM_TR3: Energy totals
+//   - Use: Set mode=daily, number=365, stepsize=15m
+//
+// GRID STABILITY (IT22360182):
+//   - Mon_Bus33A_Voltage, Mon_Bus33B_Voltage: Voltage monitoring
+//   - Mon_F11_Power: PV-heavy feeder power flow
+//   - Mon_Wind: Wind generation variability
+//   - Use: Set mode=daily, stepsize=1m for high resolution
+//
+// FAULT DIAGNOSTICS (IT22577924):
+//   - Mon_F09_Fault, Mon_F09_Sec2-5: Current waveforms along F09
+//   - Mon_F09_Sequence: Sequence components for fault classification
+//   - Mon_F11_Fault, Mon_F06_Fault: Urban/industrial faults
+//   - Use: Set mode=dynamics, stepsize=0.0001 for waveform capture
+//
+// SELF-HEALING (IT22053350):
+//   - Mon_CB_F*: Circuit Breaker monitoring (8 switches)
+//   - Mon_SEC_F*: Sectionalizer monitoring (8 switches)
+//   - Mon_Tie_*: Tie switch monitoring (5 switches)
+//   - Mon_BusCoupler: Bus coupler for cross-section transfer
+//   - All Mon_F*_Power: Track load restoration
+//   - Use: Set mode=snapshot, iterate after each switch operation
+//
+// MARL ACTION SPACE MAPPING (21 switches):
+//   Index 0-7:   CB_F05 to CB_F12      (Normal=1, Closed)
+//   Index 8-15:  SEC_F05 to SEC_F12    (Normal=1, Closed)
+//   Index 16-20: Tie switches          (Normal=0, Open)
+//     16: Tie_F06_F07
+//     17: Tie_F07_F08
+//     18: Tie_F09_F10
+//     19: Tie_F10_F11
+//     20: BusCoupler
+//
+// ============================================================================
+
+// ============================================================================
+// END OF MONITORS
+// ============================================================================

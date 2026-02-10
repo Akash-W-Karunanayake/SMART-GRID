@@ -1,0 +1,120 @@
+// ============================================================================
+// CHUNNAKAM GRID - SWITCHES AND PROTECTION DEVICES
+// ============================================================================
+// This file defines the switching infrastructure critical for:
+// - Fault isolation (sectionalizers)
+// - Automatic reclosing (reclosers)
+// - Load transfer (tie switches)
+// - Self-healing operations
+//
+// SWITCH STATES:
+// - Feeder breakers: Normally CLOSED
+// - Sectionalizers: Normally CLOSED
+// - Tie switches: Normally OPEN
+// - Bus coupler: Normally OPEN (split-bus operation)
+// ============================================================================
+
+// ----------------------------------------------------------------------------
+// TEMPORARILY DISABLED ALL CONTROLS FOR DEBUGGING
+// ----------------------------------------------------------------------------
+// SwtControl and Recloser elements are commented out to test base model loading.
+// Once Lines load correctly, these can be re-enabled.
+
+// ----------------------------------------------------------------------------
+// 33 kV BUS COUPLER CONTROL
+// ----------------------------------------------------------------------------
+// DISABLED - Line.BusCoupler was also disabled
+// New SwtControl.BusCoupler_Ctrl
+// ~   SwitchedObj=Line.BusCoupler
+// ~   SwitchedTerm=1
+// ~   Action=Open
+// ~   enabled=yes
+
+// ----------------------------------------------------------------------------
+// FEEDER BREAKERS (33 kV) - TEMPORARILY DISABLED
+// ----------------------------------------------------------------------------
+// New SwtControl.BRK_F05
+// ~   SwitchedObj=Line.F05_Sec1
+// ~   SwitchedTerm=1
+// ~   Action=Close
+// ~   enabled=yes
+
+// New SwtControl.BRK_F06
+// ~   SwitchedObj=Line.F06_Sec1
+// ~   SwitchedTerm=1
+// ~   Action=Close
+// ~   enabled=yes
+
+// New SwtControl.BRK_F07
+// ~   SwitchedObj=Line.F07_Sec1
+// ~   SwitchedTerm=1
+// ~   Action=Close
+// ~   enabled=yes
+
+// New SwtControl.BRK_F08
+// ~   SwitchedObj=Line.F08_Sec1
+// ~   SwitchedTerm=1
+// ~   Action=Close
+// ~   enabled=yes
+
+// New SwtControl.BRK_F09
+// ~   SwitchedObj=Line.F09_Sec1
+// ~   SwitchedTerm=1
+// ~   Action=Close
+// ~   enabled=yes
+
+// New SwtControl.BRK_F10
+// ~   SwitchedObj=Line.F10_Sec1
+// ~   SwitchedTerm=1
+// ~   Action=Close
+// ~   enabled=yes
+
+// New SwtControl.BRK_F11
+// ~   SwitchedObj=Line.F11_Sec1
+// ~   SwitchedTerm=1
+// ~   Action=Close
+// ~   enabled=yes
+
+// New SwtControl.BRK_F12
+// ~   SwitchedObj=Line.F12_Sec1
+// ~   SwitchedTerm=1
+// ~   Action=Close
+// ~   enabled=yes
+
+// ----------------------------------------------------------------------------
+// SECTIONALIZERS - TEMPORARILY DISABLED
+// ----------------------------------------------------------------------------
+// All sectionalizer controls commented out for debugging
+
+// ----------------------------------------------------------------------------
+// TIE SWITCHES - TEMPORARILY DISABLED
+// ----------------------------------------------------------------------------
+// Tie lines are set to enabled=no in Lines.dss (normally open)
+// SwtControl for tie switches commented out for debugging
+
+// ----------------------------------------------------------------------------
+// RECLOSERS - TEMPORARILY DISABLED
+// ----------------------------------------------------------------------------
+// All recloser controls commented out for debugging
+
+// ============================================================================
+// SWITCH OPERATION COMMANDS FOR SELF-HEALING
+// ============================================================================
+// These are example commands that the Self-Healing component can issue:
+//
+// To OPEN a switch:
+//   Edit SwtControl.SEC_F09_2 Action=Open
+//   Solve
+//
+// To CLOSE a tie switch:
+//   Edit SwtControl.TIE_F12_F09 Action=Close
+//   Solve
+//
+// To transfer load via bus coupler:
+//   Edit SwtControl.BusCoupler_Ctrl Action=Close
+//   Solve
+// ============================================================================
+
+// ============================================================================
+// END OF SWITCHES
+// ============================================================================

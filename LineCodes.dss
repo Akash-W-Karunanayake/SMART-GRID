@@ -1,0 +1,189 @@
+// ============================================================================
+// CHUNNAKAM GRID - LINE CODES (CEB CONDUCTOR SPECIFICATIONS)
+// ============================================================================
+// Sri Lankan Ceylon Electricity Board standard ACSR conductors
+// Parameters calculated at 50°C operating temperature
+// All values per kilometer, 50 Hz system
+//
+// Reference: CEB Technical Specifications for Distribution Lines
+// ============================================================================
+
+// ----------------------------------------------------------------------------
+// 33 kV DISTRIBUTION CONDUCTORS
+// ----------------------------------------------------------------------------
+
+// LYNX (175 mm² ACSR) - Main feeder conductor for urban/industrial
+// Used for: F05, F06, F08, F11 main trunk
+New LineCode.LYNX_33kV
+~   nphases=3
+~   basefreq=50
+~   r1=0.1871          // Ω/km positive sequence resistance
+~   x1=0.3973          // Ω/km positive sequence reactance  
+~   r0=0.4123          // Ω/km zero sequence resistance
+~   x0=1.2456          // Ω/km zero sequence reactance
+~   c1=9.45            // nF/km positive sequence capacitance
+~   c0=5.23            // nF/km zero sequence capacitance
+~   normamps=645       // Normal current rating (A)
+~   emergamps=774      // Emergency rating (120% for 2 hours)
+~   units=km
+
+// RACOON (80 mm² ACSR) - Secondary feeder conductor
+// Used for: F07, F10, F12 main trunk, laterals
+New LineCode.RACOON_33kV
+~   nphases=3
+~   basefreq=50
+~   r1=0.3622          // Ω/km
+~   x1=0.4187          // Ω/km
+~   r0=0.7521          // Ω/km
+~   x0=1.3124          // Ω/km
+~   c1=8.12            // nF/km
+~   c0=4.56            // nF/km
+~   normamps=357       // A
+~   emergamps=428
+~   units=km
+
+// DOG (30 mm² ACSR) - Rural/light load feeders
+// Used for: F09 (rural), laterals, spur lines
+New LineCode.DOG_33kV
+~   nphases=3
+~   basefreq=50
+~   r1=0.9102          // Ω/km (higher resistance)
+~   x1=0.4536          // Ω/km
+~   r0=1.7234          // Ω/km
+~   x0=1.4021          // Ω/km
+~   c1=7.23            // nF/km
+~   c0=4.12            // nF/km
+~   normamps=162       // A (lower rating for rural)
+~   emergamps=194
+~   units=km
+
+// XLPE 185mm² Underground Cable - Urban areas
+// Used for: F11 town center sections
+New LineCode.XLPE_185_33kV
+~   nphases=3
+~   basefreq=50
+~   r1=0.0991          // Ω/km (lower resistance)
+~   x1=0.1131          // Ω/km (lower reactance)
+~   r0=0.3245          // Ω/km
+~   x0=0.0412          // Ω/km
+~   c1=240.0           // nF/km (much higher capacitance)
+~   c0=180.0           // nF/km
+~   normamps=430       // A
+~   emergamps=516
+~   units=km
+
+// ----------------------------------------------------------------------------
+// 11 kV DISTRIBUTION CONDUCTORS (for distribution transformers)
+// ----------------------------------------------------------------------------
+
+// RACOON 11kV - Standard 11kV distribution
+New LineCode.RACOON_11kV
+~   nphases=3
+~   basefreq=50
+~   r1=0.3622
+~   x1=0.3521
+~   r0=0.7521
+~   x0=1.1024
+~   c1=9.23
+~   c0=5.12
+~   normamps=357
+~   emergamps=428
+~   units=km
+
+// DOG 11kV - Light load 11kV feeders  
+New LineCode.DOG_11kV
+~   nphases=3
+~   basefreq=50
+~   r1=0.9102
+~   x1=0.3823
+~   r0=1.7234
+~   x0=1.2012
+~   c1=8.12
+~   c0=4.56
+~   normamps=162
+~   emergamps=194
+~   units=km
+
+// WEASEL (15 mm² ACSR) - Light rural 11kV
+New LineCode.WEASEL_11kV
+~   nphases=3
+~   basefreq=50
+~   r1=1.8453
+~   x1=0.4123
+~   r0=3.2145
+~   x0=1.3421
+~   c1=6.89
+~   c0=3.92
+~   normamps=97
+~   emergamps=116
+~   units=km
+
+// ----------------------------------------------------------------------------
+// LOW VOLTAGE (400V) CONDUCTORS - Service to households
+// ----------------------------------------------------------------------------
+
+// ABC 95mm² - Aggregate LV distribution (represents ~20 parallel circuits)
+// Original single-circuit values: r1=0.3200, x1=0.0750 per km
+// Reduced by factor of 20 for aggregated area model
+New LineCode.ABC_95_LV
+~   nphases=3
+~   basefreq=50
+~   r1=0.0160
+~   x1=0.00375
+~   r0=0.0510
+~   x0=0.0060
+~   c1=0.0
+~   c0=0.0
+~   normamps=4700
+~   emergamps=5640
+~   units=km
+
+// ABC 50mm² - Aggregate LV distribution (represents ~20 parallel circuits)
+// Original single-circuit values: r1=0.6410, x1=0.0820 per km
+// Reduced by factor of 20 for aggregated area model
+New LineCode.ABC_50_LV
+~   nphases=3
+~   basefreq=50
+~   r1=0.0321
+~   x1=0.0041
+~   r0=0.0925
+~   x0=0.0075
+~   c1=0.0
+~   c0=0.0
+~   normamps=2840
+~   emergamps=3400
+~   units=km
+
+// Single phase service drop
+New LineCode.Service_1ph
+~   nphases=1
+~   basefreq=50
+~   r1=0.8500
+~   x1=0.0900
+~   r0=0.8500
+~   x0=0.0900
+~   normamps=80
+~   emergamps=96
+~   units=km
+
+// ----------------------------------------------------------------------------
+// 132 kV TRANSMISSION CONDUCTOR (for reference)
+// ----------------------------------------------------------------------------
+
+// ZEBRA (400 mm² ACSR) - 132kV transmission
+New LineCode.ZEBRA_132kV
+~   nphases=3
+~   basefreq=50
+~   r1=0.0674
+~   x1=0.3945
+~   r0=0.1823
+~   x0=1.2341
+~   c1=11.23
+~   c0=6.45
+~   normamps=850
+~   emergamps=1020
+~   units=km
+
+// ============================================================================
+// END OF LINE CODES
+// ============================================================================
