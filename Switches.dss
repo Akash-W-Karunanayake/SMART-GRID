@@ -51,7 +51,7 @@ New Line.SEC_F08 Bus1=F08_Node2.1.2.3 Bus2=F08_Node3.1.2.3 Switch=yes Length=0.0
 New Line.SEC_F09 Bus1=F09_Node3.1.2.3 Bus2=F09_Node4.1.2.3 Switch=yes Length=0.001 Units=km enabled=yes
 New Line.SEC_F10 Bus1=F10_Node2.1.2.3 Bus2=F10_Node3.1.2.3 Switch=yes Length=0.001 Units=km enabled=yes
 New Line.SEC_F11 Bus1=F11_Node2.1.2.3 Bus2=F11_Node3.1.2.3 Switch=yes Length=0.001 Units=km enabled=yes
-New Line.SEC_F12 Bus1=F12_Node1.1.2.3 Bus2=F12_Node2.1.2.3 Switch=yes Length=0.001 Units=km enabled=yes
+New Line.SEC_F12 Bus1=F12_Node2.1.2.3 Bus2=F12_Node3.1.2.3 Switch=yes Length=0.001 Units=km enabled=yes
 
 
 ! -----------------------------------------------------------

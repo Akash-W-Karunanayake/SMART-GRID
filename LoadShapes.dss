@@ -194,16 +194,16 @@ New LoadShape.Monthly_Wind
 // Uncomment the Redirect lines below after running the pipeline for your date.
 // Default date: August 1, 2025
 
-Redirect LoadShapes_RealData/F06_20250801.dss
-Redirect LoadShapes_RealData/F07_20250801.dss
-Redirect LoadShapes_RealData/F08_20250801.dss
-Redirect LoadShapes_RealData/F09_20250801.dss
-Redirect LoadShapes_RealData/F10_20250801.dss
-Redirect LoadShapes_RealData/F11_20250801.dss
-Redirect LoadShapes_RealData/F12_20250801.dss
-Redirect LoadShapes_RealData/Solar_20250801.dss
-Redirect LoadShapes_RealData/Wind_20250801.dss
-Redirect LoadShapes_RealData/UJPS_20250801.dss
+Redirect LoadShapes_RealData/F06_20250708.dss
+Redirect LoadShapes_RealData/F07_20250708.dss
+Redirect LoadShapes_RealData/F08_20250708.dss
+Redirect LoadShapes_RealData/F09_20250708.dss
+Redirect LoadShapes_RealData/F10_20250708.dss
+Redirect LoadShapes_RealData/F11_20250708.dss
+Redirect LoadShapes_RealData/F12_20250708.dss
+Redirect LoadShapes_RealData/Solar_20250708.dss
+Redirect LoadShapes_RealData/Wind_20250708.dss
+Redirect LoadShapes_RealData/UJPS_20250708.dss
 
 // ============================================================================
 // END OF LOAD SHAPES

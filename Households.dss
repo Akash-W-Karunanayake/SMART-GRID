@@ -32,7 +32,7 @@ New Load.F06_Industrial_Factory
 ~   kW=4000                    // 4 MW peak - cement grinding, kilns
 ~   kvar=2400                  // pf=0.86 (induction motors)
 ~   model=2                    // Constant Z for motor loads
-~   daily=F06_Industrial_Factory_20250801
+~   daily=F06_Industrial_Factory_20250708
 ~   status=variable
 ~   vminpu=0.90
 ~   vmaxpu=1.10
@@ -46,7 +46,7 @@ New Load.F06_SmallIndustry
 ~   kW=1500                    // 1.5 MW peak
 ~   kvar=750                   // pf=0.89
 ~   model=1                    // Constant P
-~   daily=F06_SmallIndustry_20250801
+~   daily=F06_SmallIndustry_20250708
 ~   status=variable
 
 // HH3: Residential cluster near industrial zone
@@ -58,7 +58,7 @@ New Load.F06_Residential
 ~   kW=700                     // 700 kW peak
 ~   kvar=280                   // pf=0.93
 ~   model=1
-~   daily=F06_Residential_20250801
+~   daily=F06_Residential_20250708
 ~   status=variable
 
 // ----------------------------------------------------------------------------
@@ -75,7 +75,7 @@ New Load.F07_Village_Center
 ~   kW=2500                    // 2.5 MW peak
 ~   kvar=1000                  // pf=0.93
 ~   model=1
-~   daily=F07_Village_Center_20250801
+~   daily=F07_Village_Center_20250708
 ~   status=variable
 
 // HH2: Agricultural area with irrigation pumps
@@ -87,7 +87,7 @@ New Load.F07_Agricultural
 ~   kW=3000                    // 3 MW peak (pump motors)
 ~   kvar=2100                  // pf=0.82 (induction motors)
 ~   model=2                    // Constant Z for motors
-~   daily=F07_Agricultural_20250801
+~   daily=F07_Agricultural_20250708
 ~   status=variable
 
 // HH3: Scattered rural houses
@@ -99,7 +99,7 @@ New Load.F07_Rural_Houses
 ~   kW=2300                    // 2.3 MW peak
 ~   kvar=920                   // pf=0.93
 ~   model=1
-~   daily=F07_Rural_Houses_20250801
+~   daily=F07_Rural_Houses_20250708
 ~   status=variable
 
 // ----------------------------------------------------------------------------
@@ -116,7 +116,7 @@ New Load.F08_Commercial
 ~   kW=5000                    // 5 MW peak
 ~   kvar=2000                  // pf=0.93
 ~   model=1
-~   daily=F08_Commercial_20250801
+~   daily=F08_Commercial_20250708
 ~   status=variable
 
 // HH2: Residential cluster
@@ -128,7 +128,7 @@ New Load.F08_Residential
 ~   kW=4500                    // 4.5 MW peak
 ~   kvar=1800                  // pf=0.93
 ~   model=1
-~   daily=F08_Residential_20250801
+~   daily=F08_Residential_20250708
 ~   status=variable
 
 // HH3: Mixed use area
@@ -140,7 +140,7 @@ New Load.F08_Mixed
 ~   kW=3100                    // 3.1 MW peak
 ~   kvar=1240                  // pf=0.93
 ~   model=1
-~   daily=F08_Mixed_20250801
+~   daily=F08_Mixed_20250708
 ~   status=variable
 
 // ----------------------------------------------------------------------------
@@ -158,7 +158,7 @@ New Load.F09_Town_Center
 ~   kW=2200                    // 2.2 MW peak
 ~   kvar=880                   // pf=0.93
 ~   model=1
-~   daily=F09_Town_Center_20250801
+~   daily=F09_Town_Center_20250708
 ~   status=variable
 
 // HH2: Village cluster
@@ -170,7 +170,7 @@ New Load.F09_Village
 ~   kW=1800                    // 1.8 MW peak
 ~   kvar=720                   // pf=0.93
 ~   model=1
-~   daily=F09_Village_20250801
+~   daily=F09_Village_20250708
 ~   status=variable
 
 // HH3: Scattered rural - agriculture
@@ -182,7 +182,7 @@ New Load.F09_Rural_Agri
 ~   kW=2000                    // 2 MW peak (some pumps)
 ~   kvar=1000                  // pf=0.89 (pump motors)
 ~   model=2
-~   daily=F09_Rural_Agri_20250801
+~   daily=F09_Rural_Agri_20250708
 ~   status=variable
 
 // HH4: Remote farming area (end of line)
@@ -194,7 +194,7 @@ New Load.F09_Remote
 ~   kW=1200                    // 1.2 MW peak
 ~   kvar=480                   // pf=0.93
 ~   model=1
-~   daily=F09_Remote_20250801
+~   daily=F09_Remote_20250708
 ~   status=variable
 
 // ----------------------------------------------------------------------------
@@ -211,7 +211,7 @@ New Load.F10_Town
 ~   kW=5500                    // 5.5 MW peak
 ~   kvar=2200                  // pf=0.93
 ~   model=1
-~   daily=F10_Town_20250801
+~   daily=F10_Town_20250708
 ~   status=variable
 
 // HH2: Fishing village - cold storage, ice plants
@@ -223,7 +223,7 @@ New Load.F10_Fishing
 ~   kW=4000                    // 4 MW peak (refrigeration)
 ~   kvar=2000                  // pf=0.89 (compressor motors)
 ~   model=2
-~   daily=F10_Fishing_20250801     // 24-hour cold storage
+~   daily=F10_Fishing_20250708     // 24-hour cold storage
 ~   status=variable
 
 // HH3: Coastal residential
@@ -235,7 +235,7 @@ New Load.F10_Coastal_Res
 ~   kW=3100                    // 3.1 MW peak
 ~   kvar=1240                  // pf=0.93
 ~   model=1
-~   daily=F10_Coastal_Res_20250801
+~   daily=F10_Coastal_Res_20250708
 ~   status=variable
 
 // ----------------------------------------------------------------------------
@@ -253,7 +253,7 @@ New Load.F11_Hospital
 ~   kW=2500                    // 2.5 MW peak (24-hour)
 ~   kvar=1250                  // pf=0.89 (medical equipment, AC)
 ~   model=1
-~   daily=F11_Hospital_20250801
+~   daily=F11_Hospital_20250708
 ~   status=variable
 ~   vminpu=0.95                // Tighter voltage limits for hospital
 ~   vmaxpu=1.05
@@ -267,7 +267,7 @@ New Load.F11_Commercial
 ~   kW=4500                    // 4.5 MW peak
 ~   kvar=1800                  // pf=0.93
 ~   model=1
-~   daily=F11_Commercial_20250801
+~   daily=F11_Commercial_20250708
 ~   status=variable
 
 // HH_Res1: Residential apartments
@@ -279,7 +279,7 @@ New Load.F11_Apartments
 ~   kW=4000                    // 4 MW peak
 ~   kvar=1600                  // pf=0.93
 ~   model=1
-~   daily=F11_Apartments_20250801
+~   daily=F11_Apartments_20250708
 ~   status=variable
 
 // HH_Res2: Mixed residential/small shops
@@ -291,7 +291,7 @@ New Load.F11_MixedRes
 ~   kW=3400                    // 3.4 MW peak
 ~   kvar=1360                  // pf=0.93
 ~   model=1
-~   daily=F11_MixedRes_20250801
+~   daily=F11_MixedRes_20250708
 ~   status=variable
 
 // ----------------------------------------------------------------------------
@@ -308,7 +308,7 @@ New Load.F12_Residential1
 ~   kW=7000                    // 7 MW peak
 ~   kvar=2800                  // pf=0.93
 ~   model=1
-~   daily=F12_Residential1_20250801
+~   daily=F12_Residential1_20250708
 ~   status=variable
 
 // HH2: Mixed residential
@@ -320,8 +320,39 @@ New Load.F12_Residential2
 ~   kW=5700                    // 5.7 MW peak
 ~   kvar=2280                  // pf=0.93
 ~   model=1
-~   daily=F12_Residential2_20250801
+~   daily=F12_Residential2_20250708
 ~   status=variable
+
+// ============================================================================
+// REACTIVE POWER COMPENSATION
+// ============================================================================
+// Fixed capacitor banks at remote LV buses to improve voltage profile.
+// Required because long 33kV DOG feeder (F09: 18 km) + LV drop causes
+// voltages as low as 0.7666 pu at end-of-line buses during peak load.
+// Each bank is sized to compensate ~50% of reactive demand at the bus.
+
+// F09 remote buses (end of 18 km DOG feeder - worst voltage)
+New Capacitor.CAP_F09_Rural_Agri
+~   bus1=F09_HH3.1.2.3
+~   phases=3
+~   kV=0.4
+~   kvar=500                   // 500 kvar: compensates most of 1000 kvar reactive demand
+~   numsteps=1
+
+New Capacitor.CAP_F09_Remote
+~   bus1=F09_HH4.1.2.3
+~   phases=3
+~   kV=0.4
+~   kvar=250                   // 250 kvar: compensates ~50% of 480 kvar reactive demand
+~   numsteps=1
+
+// F10 coastal residential (end of 14 km RACOON feeder)
+New Capacitor.CAP_F10_Coastal
+~   bus1=F10_HH3.1.2.3
+~   phases=3
+~   kV=0.4
+~   kvar=300                   // 300 kvar reactive support for coastal residential
+~   numsteps=1
 
 // ============================================================================
 // LOAD SUMMARY

@@ -57,7 +57,7 @@ New PVSystem.PV_F06_Factory
 ~   %Cutin=5                   // Cut-in at 5% irradiance
 ~   %Cutout=5
 ~   effcurve=InverterEff
-~   daily=Solar_20250801
+~   daily=Solar_20250708
 ~   %Pmpp=100
 ~   kVA=5500                   // Inverter slightly oversized
 ~   pf=1.0
@@ -73,7 +73,7 @@ New PVSystem.PV_F06_SmallInd
 ~   %Cutin=5
 ~   %Cutout=5
 ~   effcurve=InverterEff
-~   daily=Solar_20250801
+~   daily=Solar_20250708
 ~   %Pmpp=100
 ~   kVA=3850
 ~   pf=1.0
@@ -89,7 +89,7 @@ New PVSystem.PV_F06_Residential
 ~   %Cutin=5
 ~   %Cutout=5
 ~   effcurve=InverterEff
-~   daily=Solar_20250801
+~   daily=Solar_20250708
 ~   %Pmpp=100
 ~   kVA=1800
 ~   pf=1.0
@@ -109,7 +109,7 @@ New PVSystem.PV_F07_Village
 ~   %Cutin=5
 ~   %Cutout=5
 ~   effcurve=InverterEff
-~   daily=Solar_20250801
+~   daily=Solar_20250708
 ~   %Pmpp=100
 ~   kVA=4400
 ~   pf=1.0
@@ -125,7 +125,7 @@ New PVSystem.PV_F07_Agricultural
 ~   %Cutin=5
 ~   %Cutout=5
 ~   effcurve=InverterEff
-~   daily=Solar_20250801
+~   daily=Solar_20250708
 ~   %Pmpp=100
 ~   kVA=3850
 ~   pf=1.0
@@ -141,7 +141,7 @@ New PVSystem.PV_F07_Rural
 ~   %Cutin=5
 ~   %Cutout=5
 ~   effcurve=InverterEff
-~   daily=Solar_20250801
+~   daily=Solar_20250708
 ~   %Pmpp=100
 ~   kVA=1840
 ~   pf=1.0
@@ -161,7 +161,7 @@ New PVSystem.PV_F08_Commercial
 ~   %Cutin=5
 ~   %Cutout=5
 ~   effcurve=InverterEff
-~   daily=Solar_20250801
+~   daily=Solar_20250708
 ~   %Pmpp=100
 ~   kVA=2750
 ~   pf=1.0
@@ -177,7 +177,7 @@ New PVSystem.PV_F08_Residential
 ~   %Cutin=5
 ~   %Cutout=5
 ~   effcurve=InverterEff
-~   daily=Solar_20250801
+~   daily=Solar_20250708
 ~   %Pmpp=100
 ~   kVA=2200
 ~   pf=1.0
@@ -193,7 +193,7 @@ New PVSystem.PV_F08_Mixed
 ~   %Cutin=5
 ~   %Cutout=5
 ~   effcurve=InverterEff
-~   daily=Solar_20250801
+~   daily=Solar_20250708
 ~   %Pmpp=100
 ~   kVA=1040
 ~   pf=1.0
@@ -215,7 +215,7 @@ New PVSystem.PV_F09_Town
 ~   %Cutin=5
 ~   %Cutout=5
 ~   effcurve=InverterEff
-~   daily=Solar_20250801
+~   daily=Solar_20250708
 ~   %Pmpp=100
 ~   kVA=220
 ~   pf=1.0
@@ -231,7 +231,7 @@ New PVSystem.PV_F09_Village
 ~   %Cutin=10                  // Higher cut-in (basic inverters)
 ~   %Cutout=10
 ~   effcurve=InverterEff
-~   daily=Solar_20250801
+~   daily=Solar_20250708
 ~   %Pmpp=100
 ~   kVA=165
 ~   pf=1.0
@@ -253,7 +253,7 @@ New PVSystem.PV_F10_Town
 ~   %Cutin=5
 ~   %Cutout=5
 ~   effcurve=InverterEff
-~   daily=Solar_20250801
+~   daily=Solar_20250708
 ~   %Pmpp=100
 ~   kVA=3850
 ~   pf=1.0
@@ -269,7 +269,7 @@ New PVSystem.PV_F10_Fishing
 ~   %Cutin=5
 ~   %Cutout=5
 ~   effcurve=InverterEff
-~   daily=Solar_20250801
+~   daily=Solar_20250708
 ~   %Pmpp=100
 ~   kVA=2200
 ~   pf=1.0
@@ -285,7 +285,7 @@ New PVSystem.PV_F10_Coastal
 ~   %Cutin=5
 ~   %Cutout=5
 ~   effcurve=InverterEff
-~   daily=Solar_20250801
+~   daily=Solar_20250708
 ~   %Pmpp=100
 ~   kVA=1650
 ~   pf=1.0
@@ -307,7 +307,7 @@ New PVSystem.PV_F11_Hospital
 ~   %Cutin=5
 ~   %Cutout=5
 ~   effcurve=InverterEff
-~   daily=Solar_20250801
+~   daily=Solar_20250708
 ~   %Pmpp=100
 ~   kVA=1650
 ~   pf=1.0
@@ -323,7 +323,7 @@ New PVSystem.PV_F11_Commercial
 ~   %Cutin=5
 ~   %Cutout=5
 ~   effcurve=InverterEff
-~   daily=Solar_20250801
+~   daily=Solar_20250708
 ~   %Pmpp=100
 ~   kVA=3850
 ~   pf=1.0
@@ -339,7 +339,7 @@ New PVSystem.PV_F11_Apartments
 ~   %Cutin=5
 ~   %Cutout=5
 ~   effcurve=InverterEff
-~   daily=Solar_20250801
+~   daily=Solar_20250708
 ~   %Pmpp=100
 ~   kVA=3300
 ~   pf=1.0
@@ -355,7 +355,7 @@ New PVSystem.PV_F11_MixedRes
 ~   %Cutin=5
 ~   %Cutout=5
 ~   effcurve=InverterEff
-~   daily=Solar_20250801
+~   daily=Solar_20250708
 ~   %Pmpp=100
 ~   kVA=2450
 ~   pf=1.0
@@ -375,7 +375,7 @@ New PVSystem.PV_F12_Res1
 ~   %Cutin=5
 ~   %Cutout=5
 ~   effcurve=InverterEff
-~   daily=Solar_20250801
+~   daily=Solar_20250708
 ~   %Pmpp=100
 ~   kVA=3300
 ~   pf=1.0
@@ -391,7 +391,7 @@ New PVSystem.PV_F12_Res2
 ~   %Cutin=5
 ~   %Cutout=5
 ~   effcurve=InverterEff
-~   daily=Solar_20250801
+~   daily=Solar_20250708
 ~   %Pmpp=100
 ~   kVA=2200
 ~   pf=1.0

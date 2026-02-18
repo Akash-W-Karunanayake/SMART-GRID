@@ -30,7 +30,7 @@ New Generator.UJPS_Gen1
 ~   H=3.5                      // Inertia constant (s)
 ~   Xdp=0.20                   // Transient reactance (pu)
 ~   Xdpp=0.15                  // Subtransient reactance (pu)
-~   daily=UJPS_20250801
+~   daily=UJPS_20250708
 ~   status=variable
 
 // Generator 2 - 8 MW HFO Engine
@@ -47,7 +47,7 @@ New Generator.UJPS_Gen2
 ~   H=3.5
 ~   Xdp=0.20
 ~   Xdpp=0.15
-~   daily=UJPS_20250801
+~   daily=UJPS_20250708
 ~   status=variable
 
 // Generator 3 - 8 MW HFO Engine
@@ -64,7 +64,7 @@ New Generator.UJPS_Gen3
 ~   H=3.5
 ~   Xdp=0.20
 ~   Xdpp=0.15
-~   daily=UJPS_20250801
+~   daily=UJPS_20250708
 ~   status=variable
 
 // ----------------------------------------------------------------------------
@@ -87,7 +87,7 @@ New Generator.WindFarm
 ~   H=5.0                      // Higher inertia (turbine + gearbox)
 ~   Xdp=0.25                   // Transient reactance
 ~   Xdpp=0.18                  // Subtransient reactance
-~   daily=Wind_20250801
+~   daily=Wind_20250708
 ~   status=variable
 
 // ============================================================================
