@@ -201,15 +201,22 @@ class PipelineService:
                 step_data["total_thermal_kw"] = round(thermal_kw, 2)
                 step_data["total_generation_kw"] = round(solar_kw + wind_kw + thermal_kw, 2)
 
-                # Voltage stats
+                # Voltage stats + per-bus voltages for topology coloring
                 bus_names = dss.Circuit.AllBusNames()
                 voltages = []
+                bus_voltages: dict = {}
                 for bname in bus_names:
                     dss.Circuit.SetActiveBus(bname)
                     vmag = dss.Bus.puVmagAngle()
                     if vmag:
                         v_pu = vmag[0::2][:dss.Bus.NumNodes()]
                         voltages.extend(v_pu)
+                        # Store mean voltage per bus (skip intermediate LV buses)
+                        valid_bus_v = [v for v in v_pu if 0.1 < v < 2.0]
+                        if valid_bus_v:
+                            bus_voltages[bname] = round(
+                                sum(valid_bus_v) / len(valid_bus_v), 4
+                            )
 
                 valid_v = [v for v in voltages if 0.1 < v < 2.0]
                 step_data["min_voltage_pu"] = round(min(valid_v), 4) if valid_v else 0.0
@@ -217,6 +224,7 @@ class PipelineService:
                 step_data["voltage_violations"] = sum(
                     1 for v in valid_v if v < 0.95 or v > 1.05
                 )
+                step_data["bus_voltages"] = bus_voltages
 
             steps.append(step_data)
 

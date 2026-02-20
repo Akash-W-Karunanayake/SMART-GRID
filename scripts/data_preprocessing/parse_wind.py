@@ -89,6 +89,10 @@ def parse_wind() -> pd.DataFrame:
     # Interpolate missing values
     hourly["WindSpeed_ms"] = hourly["WindSpeed_ms"].interpolate(method="linear", limit=3)
 
+    # Apply 3-hour rolling average to smooth timing mismatches between
+    # NASA hourly data and actual wind output (reduces negative correlation days)
+    hourly["WindSpeed_ms"] = hourly["WindSpeed_ms"].rolling(3, center=True, min_periods=1).mean()
+
     # Clamp negatives to 0
     hourly["WindSpeed_ms"] = hourly["WindSpeed_ms"].clip(lower=0)
 

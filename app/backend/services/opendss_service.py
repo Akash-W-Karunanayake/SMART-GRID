@@ -203,9 +203,13 @@ class OpenDSSService:
             }
         }
 
-    def solve(self) -> bool:
+    def solve(self, mode: str = "snapshot") -> bool:
         """
         Run power flow solution with robust settings for high-DG scenarios.
+
+        Args:
+            mode: OpenDSS solution mode. Default 'snapshot' for single time point.
+                  Pass 'daily' to preserve daily-mode state.
 
         Returns:
             True if solution converged, False otherwise.
@@ -214,7 +218,7 @@ class OpenDSSService:
             raise RuntimeError("Model not loaded. Call load_model() first.")
 
         # Use robust solver settings for high solar penetration scenarios
-        dss.Text.Command("Set mode=snapshot")  # Snapshot mode for single time point
+        dss.Text.Command(f"Set mode={mode}")  # Solution mode (snapshot or daily)
         dss.Text.Command("Set controlmode=static")  # Allow regulators/capacitor controls
         dss.Text.Command("Set algorithm=newton")  # Newton-Raphson is more robust
         dss.Text.Command("Set maxiterations=300")  # Adequate iterations

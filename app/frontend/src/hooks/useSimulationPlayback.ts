@@ -19,7 +19,11 @@ function dateRange(start: string, end: string): string[] {
   const cur = new Date(start + 'T00:00:00');
   const last = new Date(end + 'T00:00:00');
   while (cur <= last) {
-    dates.push(cur.toISOString().slice(0, 10));
+    // Use local date parts to avoid UTC timezone shift (e.g. IST UTC+5:30)
+    const yyyy = cur.getFullYear();
+    const mm = String(cur.getMonth() + 1).padStart(2, '0');
+    const dd = String(cur.getDate()).padStart(2, '0');
+    dates.push(`${yyyy}-${mm}-${dd}`);
     cur.setDate(cur.getDate() + 1);
   }
   return dates;
@@ -39,6 +43,14 @@ function toStep(s: any): PipelineStep {
     total_wind_kw: s.total_wind_kw ?? 0,
     total_thermal_kw: s.total_thermal_kw ?? 0,
     total_generation_kw: s.total_generation_kw ?? 0,
+    bus_voltages: s.bus_voltages,
+    power_F06_kw: s.power_F06_kw,
+    power_F07_kw: s.power_F07_kw,
+    power_F08_kw: s.power_F08_kw,
+    power_F09_kw: s.power_F09_kw,
+    power_F10_kw: s.power_F10_kw,
+    power_F11_kw: s.power_F11_kw,
+    power_F12_kw: s.power_F12_kw,
   };
 }
 

@@ -18,6 +18,16 @@ export interface PipelineStep {
   total_wind_kw: number;
   total_thermal_kw: number;
   total_generation_kw: number;
+  /** Per-bus voltage (pu) keyed by bus name — populated from pipeline */
+  bus_voltages?: Record<string, number>;
+  /** Per-feeder net power (kW) — positive = import, negative = export/reverse flow */
+  power_F06_kw?: number;
+  power_F07_kw?: number;
+  power_F08_kw?: number;
+  power_F09_kw?: number;
+  power_F10_kw?: number;
+  power_F11_kw?: number;
+  power_F12_kw?: number;
 }
 
 /** Live metrics displayed during step-by-step playback */
@@ -33,6 +43,16 @@ export interface LiveMetrics {
   total_wind_kw: number;
   total_thermal_kw: number;
   total_generation_kw: number;
+  /** Per-bus voltage (pu) keyed by bus name — enables topology node coloring per step */
+  bus_voltages?: Record<string, number>;
+  /** Per-feeder net power (kW) */
+  power_F06_kw?: number;
+  power_F07_kw?: number;
+  power_F08_kw?: number;
+  power_F09_kw?: number;
+  power_F10_kw?: number;
+  power_F11_kw?: number;
+  power_F12_kw?: number;
 }
 
 interface GridStore {
@@ -185,6 +205,14 @@ export const useGridStore = create<GridStore>((set) => ({
         total_wind_kw: step.total_wind_kw,
         total_thermal_kw: step.total_thermal_kw,
         total_generation_kw: step.total_generation_kw,
+        bus_voltages: step.bus_voltages,
+        power_F06_kw: step.power_F06_kw,
+        power_F07_kw: step.power_F07_kw,
+        power_F08_kw: step.power_F08_kw,
+        power_F09_kw: step.power_F09_kw,
+        power_F10_kw: step.power_F10_kw,
+        power_F11_kw: step.power_F11_kw,
+        power_F12_kw: step.power_F12_kw,
       },
     })),
 

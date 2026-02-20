@@ -106,8 +106,8 @@ FEEDER_LOADS = {
     "F10": [
         {"name": "F10_Town", "kw": 5500, "type": "commercial",
          "synthetic_profile": "Commercial_Daily"},
-        {"name": "F10_Fishing", "kw": 4000, "type": "industrial",
-         "synthetic_profile": "Industrial_Daily"},
+        {"name": "F10_Fishing", "kw": 4000, "type": "cold_storage",
+         "synthetic_profile": "ColdStorage_Daily"},
         {"name": "F10_Coastal_Res", "kw": 3100, "type": "residential",
          "synthetic_profile": "Residential_Daily"},
     ],
@@ -211,6 +211,14 @@ SYNTHETIC_PROFILES = {
         0.10, 0.08, 0.08, 0.10, 0.25, 0.70, 0.95, 1.00,
         0.80, 0.40, 0.20, 0.15, 0.15, 0.18, 0.25, 0.55,
         0.85, 0.90, 0.70, 0.35, 0.20, 0.15, 0.12, 0.10,
+    ],
+    # 24-hour cold storage / refrigeration (fishing industry, ice plants)
+    # Near-flat profile: refrigeration compressors run continuously
+    # Slight peak at midday (product loading) and evening (increased demand)
+    "ColdStorage_Daily": [
+        0.82, 0.80, 0.79, 0.78, 0.80, 0.83, 0.88, 0.92,
+        0.95, 0.98, 1.00, 0.99, 0.97, 0.96, 0.95, 0.93,
+        0.92, 0.93, 0.95, 0.94, 0.91, 0.88, 0.85, 0.83,
     ],
 }
 

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import ReactFlow, {
   Node,
   Edge,
@@ -10,248 +10,427 @@ import ReactFlow, {
   MarkerType,
   Handle,
   Position,
+  ReactFlowInstance,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import {
   Network,
   RefreshCw,
-  Home,
-  Building2,
-  Cross,
-  GraduationCap,
-  Factory,
-  Sun,
-  Wind,
-  Zap,
-  CircleDot,
-  Warehouse,
-  Store,
-  Church,
-  Landmark,
-  Radio,
-  Droplets,
+  Maximize,
+  Minimize,
+  LocateFixed,
 } from 'lucide-react';
 import api from '../services/api';
-import { useGridStore } from '../stores/gridStore';
-import type { Topology, TopologyNode } from '../types';
+import { useGridStore, type LiveMetrics } from '../stores/gridStore';
+import type { Topology, TopologyNode, TopologyEdge } from '../types';
+import { getGridSvgIcon, type GridSvgProps, TransformerSvg } from '../components/grid/GridSvgIcons';
+import TransformerNode from '../components/grid/TransformerNode';
+import { calculateRadialLayout } from '../components/grid/RadialLayout';
 
-// Icon mapping based on node name patterns
-function getNodeIcon(nodeName: string): React.ElementType {
-  const name = nodeName.toLowerCase();
+// ─── Feeder IDs for reverse flow detection ─────────────────────
+const FEEDER_IDS = ['F06', 'F07', 'F08', 'F09', 'F10', 'F11', 'F12'] as const;
 
-  // Solar/PV systems
-  if (name.includes('pv') || name.includes('solar')) return Sun;
-  // Wind farms
-  if (name.includes('wind')) return Wind;
-  // Hospital
-  if (name.includes('hospital') || name.includes('health')) return Cross;
-  // Schools/Education
-  if (name.includes('school') || name.includes('college') || name.includes('university')) return GraduationCap;
-  // Industrial/Factory
-  if (name.includes('factory') || name.includes('industrial') || name.includes('ind')) return Factory;
-  // Commercial/Business
-  if (name.includes('commercial') || name.includes('shop') || name.includes('market') || name.includes('store')) return Store;
-  // Government/Public buildings
-  if (name.includes('gov') || name.includes('municipal') || name.includes('office')) return Landmark;
-  // Religious buildings
-  if (name.includes('temple') || name.includes('church') || name.includes('mosque') || name.includes('kovil')) return Church;
-  // Water pumping stations
-  if (name.includes('pump') || name.includes('water')) return Droplets;
-  // Telecommunication
-  if (name.includes('telecom') || name.includes('tower') || name.includes('bts')) return Radio;
-  // Warehouse/Storage
-  if (name.includes('warehouse') || name.includes('storage')) return Warehouse;
-  // Substation/Transformer nodes (high voltage)
-  if (name.includes('sub') || name.includes('gss') || name.includes('33kv') || name.includes('11kv')) return Zap;
-  // Residential/Houses
-  if (name.includes('house') || name.includes('residential') || name.includes('home') || name.includes('lv')) return Home;
-  // Buildings (general)
-  if (name.includes('building') || name.includes('apartment')) return Building2;
-  // Default for feeder nodes
-  if (name.includes('node') || name.includes('bus')) return CircleDot;
+// ─── PV capacity map (same as Dashboard) ───────────────────────
+const PV_CAPACITY_KW: Record<string, number> = {
+  pv_f06_factory: 5000, pv_f06_smallind: 3500, pv_f06_residential: 1640,
+  pv_f07_village: 4000, pv_f07_agricultural: 3500, pv_f07_rural: 1670,
+  pv_f08_commercial: 2500, pv_f08_residential: 2000, pv_f08_mixed: 940,
+  pv_f09_town: 200, pv_f09_village: 150,
+  pv_f10_town: 3500, pv_f10_fishing: 2000, pv_f10_coastal: 1500,
+  pv_f11_hospital: 1500, pv_f11_commercial: 3500, pv_f11_apartments: 3000, pv_f11_mixedres: 2220,
+  pv_f12_res1: 3000, pv_f12_res2: 2000,
+};
+const TOTAL_PV_CAPACITY_KW = 47320;
 
-  return CircleDot;
-}
-
-// Get node category for grouping
-function getNodeCategory(nodeName: string, kv?: number): string {
-  const name = nodeName.toLowerCase();
-
-  if (kv && kv >= 33) return 'source';
-  if (name.includes('pv') || name.includes('solar') || name.includes('wind')) return 'generation';
-  if (name.includes('hospital') || name.includes('school') || name.includes('factory')) return 'critical';
-  if (name.includes('gss') || name.includes('sub')) return 'substation';
-  if (name.includes('lv') || name.includes('house')) return 'residential';
-  return 'distribution';
-}
-
-// Custom node component with icons
-function CustomNode({ data }: { data: any }) {
-  const Icon = data.icon;
+// ─── Custom SVG Node (same as Dashboard) ────────────────────────
+function SvgGridNode({ data }: { data: any }) {
+  const SvgIcon: React.FC<GridSvgProps> = data.svgIcon;
   const statusColors = {
-    normal: { bg: 'bg-green-600', border: 'border-green-400', text: 'text-green-400' },
-    low: { bg: 'bg-amber-600', border: 'border-amber-400', text: 'text-amber-400' },
-    high: { bg: 'bg-red-600', border: 'border-red-400', text: 'text-red-400' },
+    normal: { text: 'text-green-400' },
+    low: { text: 'text-amber-400' },
+    high: { text: 'text-red-400' },
   };
-  const colors = statusColors[data.voltageStatus as keyof typeof statusColors] || statusColors.normal;
+  const effectiveStatus = data.isSolar && data.solarOff ? 'off' : (data.voltageStatus ?? 'normal');
+  const colors = statusColors[effectiveStatus as keyof typeof statusColors] || statusColors.normal;
 
   return (
-    <div className={`relative px-3 py-2 rounded-lg ${colors.bg} ${colors.border} border-2 shadow-lg min-w-[100px]`}>
-      <Handle type="target" position={Position.Top} className="!bg-slate-400" />
-      <Handle type="source" position={Position.Bottom} className="!bg-slate-400" />
+    <div className={`relative flex flex-col items-center group ${data.isPlaybackActive ? 'transition-all duration-300' : ''}`}>
+      <Handle type="target" position={Position.Top} className="!bg-slate-400 !w-2 !h-2" />
+      <Handle type="target" position={Position.Left} className="!bg-slate-400 !w-2 !h-2" />
 
-      <div className="flex items-center gap-2">
-        <div className="p-1.5 bg-white/20 rounded-md">
-          <Icon className="w-4 h-4 text-white" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="font-semibold text-white text-xs truncate" title={data.label}>
-            {data.shortLabel}
-          </div>
-          {data.kv && (
-            <div className="text-[10px] text-white/70">{data.kv} kV</div>
-          )}
-        </div>
+      <div className={data.isPlaybackActive && !data.solarOff && data.isSolar ? 'animate-pulse' : ''}>
+        <SvgIcon size={28} status={effectiveStatus} />
       </div>
 
-      {data.voltagePu && (
-        <div className={`mt-1 text-[10px] font-medium ${colors.text} bg-black/30 rounded px-1.5 py-0.5 text-center`}>
+      <div
+        className="font-semibold text-white text-[10px] mt-0.5 max-w-[90px] truncate text-center"
+        title={data.label}
+      >
+        {data.shortLabel}
+      </div>
+
+      {data.kv != null && (
+        <div className="text-[8px] text-slate-400">{data.kv} kV</div>
+      )}
+
+      {data.voltagePu != null && (
+        <div className={`text-[9px] font-medium ${colors.text}`}>
           {data.voltagePu.toFixed(3)} pu
         </div>
       )}
+
+      {data.liveOutputKw != null && data.liveOutputKw > 0 && (
+        <div className="text-[8px] font-medium text-yellow-400">
+          {data.liveOutputKw > 1000 ? `${(data.liveOutputKw / 1000).toFixed(1)} MW` : `${data.liveOutputKw.toFixed(0)} kW`}
+        </div>
+      )}
+
+      <Handle type="source" position={Position.Bottom} className="!bg-slate-400 !w-2 !h-2" />
+      <Handle type="source" position={Position.Right} className="!bg-slate-400 !w-2 !h-2" />
     </div>
   );
 }
 
 const nodeTypes = {
-  custom: CustomNode,
+  svgNode: SvgGridNode,
+  transformerNode: TransformerNode,
 };
 
-// Improved layout algorithm with better spacing
-function calculateLayout(topology: Topology, gridState: any) {
+// ─── Build ReactFlow graph with radial layout ──────────────────
+function buildFlowGraph(
+  topology: Topology,
+  gridState: any,
+  liveMetrics?: LiveMetrics | null,
+  isPlaybackActive?: boolean,
+): { nodes: Node[]; edges: Edge[] } {
   const nodes: Node[] = [];
   const edges: Edge[] = [];
 
-  // Group nodes by category
-  const categories: Record<string, TopologyNode[]> = {
-    source: [],
-    substation: [],
-    distribution: [],
-    generation: [],
-    critical: [],
-    residential: [],
-  };
-
-  topology.nodes.forEach(node => {
-    const category = getNodeCategory(node.label, node.kv);
-    if (categories[category]) {
-      categories[category].push(node);
+  const transformerEdges: TopologyEdge[] = [];
+  const lineEdges: TopologyEdge[] = [];
+  for (const edge of topology.edges) {
+    if (edge.type === 'transformer') {
+      transformerEdges.push(edge);
     } else {
-      categories.distribution.push(node);
+      lineEdges.push(edge);
     }
-  });
+  }
 
-  // Layout parameters
-  const startY = 50;
-  const levelHeight = 180;
-  const nodeWidth = 140;
-  const nodeSpacing = 30;
+  // Build augmented topology with transformer virtual nodes
+  const augmentedNodes: TopologyNode[] = [...topology.nodes];
+  const augmentedEdges: TopologyEdge[] = [...lineEdges];
 
-  let currentY = startY;
+  for (const te of transformerEdges) {
+    const virtualId = `__xfmr_${te.id}`;
+    augmentedNodes.push({ id: virtualId, label: te.label, type: 'transformer' });
+    augmentedEdges.push({ id: `${te.id}_a`, source: te.source, target: virtualId, type: 'line', label: '' });
+    augmentedEdges.push({ id: `${te.id}_b`, source: virtualId, target: te.target, type: 'line', label: '' });
+  }
 
-  // Layout each category in layers
-  const categoryOrder = ['source', 'substation', 'distribution', 'generation', 'critical', 'residential'];
+  const augmentedTopology: Topology = { nodes: augmentedNodes, edges: augmentedEdges };
+  const posMap = calculateRadialLayout(augmentedTopology);
 
-  categoryOrder.forEach((category) => {
-    const categoryNodes = categories[category];
-    if (categoryNodes.length === 0) return;
+  const solarActive = liveMetrics ? liveMetrics.total_solar_kw > 0 : false;
 
-    const totalWidth = categoryNodes.length * (nodeWidth + nodeSpacing) - nodeSpacing;
-    const startX = Math.max(50, (1400 - totalWidth) / 2);
+  // Bus nodes
+  for (const node of topology.nodes) {
+    const pos = posMap.get(node.id) ?? { x: 0, y: 0 };
+    const busData = gridState?.buses?.[node.id];
 
-    categoryNodes.forEach((node, index) => {
-      const busData = gridState?.buses?.[node.id];
-      const voltagePu = busData?.voltage_pu?.[0];
-      const voltageStatus = voltagePu
-        ? voltagePu < 0.95 ? 'low'
-          : voltagePu > 1.05 ? 'high'
-          : 'normal'
-        : 'normal';
+    const liveV = liveMetrics?.bus_voltages?.[node.id];
+    const voltagePu = liveV ?? busData?.voltage_pu?.[0];
+    const voltageStatus: 'normal' | 'low' | 'high' = voltagePu
+      ? voltagePu < 0.95 ? 'low' : voltagePu > 1.05 ? 'high' : 'normal'
+      : 'normal';
 
-      // Create short label
-      const shortLabel = node.label.length > 12
-        ? node.label.substring(0, 12) + '...'
-        : node.label;
+    const shortLabel = node.label.length > 14 ? node.label.substring(0, 14) + '...' : node.label;
+    const nameLower = node.label.toLowerCase();
+    const isSolar = nameLower.includes('pv') || nameLower.includes('solar');
 
-      nodes.push({
-        id: node.id,
-        type: 'custom',
-        position: {
-          x: startX + index * (nodeWidth + nodeSpacing),
-          y: currentY,
-        },
-        data: {
-          label: node.label,
-          shortLabel,
-          kv: node.kv,
-          icon: getNodeIcon(node.label),
-          voltageStatus,
-          voltagePu,
-          category,
-        },
-      });
+    let liveOutputKw: number | null = null;
+    if (isPlaybackActive && liveMetrics && isSolar) {
+      const nodeCapacity = PV_CAPACITY_KW[nameLower] ?? (TOTAL_PV_CAPACITY_KW / 20);
+      const fraction = nodeCapacity / TOTAL_PV_CAPACITY_KW;
+      liveOutputKw = liveMetrics.total_solar_kw * fraction;
+    }
+
+    nodes.push({
+      id: node.id,
+      type: 'svgNode',
+      position: pos,
+      data: {
+        label: node.label,
+        shortLabel,
+        kv: node.kv,
+        svgIcon: getGridSvgIcon(node.label),
+        voltageStatus,
+        voltagePu,
+        isSolar,
+        solarOff: isSolar && isPlaybackActive && !solarActive,
+        isPlaybackActive: !!isPlaybackActive,
+        liveOutputKw,
+      },
+    });
+  }
+
+  // Transformer intermediate nodes
+  for (const te of transformerEdges) {
+    const virtualId = `__xfmr_${te.id}`;
+    const pos = posMap.get(virtualId) ?? { x: 0, y: 0 };
+    const xfmrData = gridState?.transformers?.[te.label];
+
+    const shortLabel = te.label.length > 12 ? te.label.substring(0, 12) + '...' : te.label;
+
+    nodes.push({
+      id: virtualId,
+      type: 'transformerNode',
+      position: pos,
+      data: {
+        label: te.label,
+        shortLabel,
+        kva: xfmrData?.kva,
+        loadingPercent: xfmrData?.loading_percent ?? 0,
+      },
     });
 
-    currentY += levelHeight;
-  });
+    edges.push({
+      id: `${te.id}_a`,
+      source: te.source,
+      target: virtualId,
+      type: 'smoothstep',
+      animated: true,
+      style: { stroke: '#22c55e', strokeWidth: 2 },
+      markerEnd: { type: MarkerType.ArrowClosed, color: '#22c55e', width: 12, height: 12 },
+    });
+    edges.push({
+      id: `${te.id}_b`,
+      source: virtualId,
+      target: te.target,
+      type: 'smoothstep',
+      animated: true,
+      style: { stroke: '#22c55e', strokeWidth: 2 },
+      markerEnd: { type: MarkerType.ArrowClosed, color: '#22c55e', width: 12, height: 12 },
+    });
+  }
 
-  // Create edges with improved styling
-  topology.edges.forEach((edge) => {
+  // Line edges with reverse flow detection
+  for (const edge of lineEdges) {
     const lineData = gridState?.lines?.[edge.label];
     const isActive = lineData?.enabled !== false;
-    const isTransformer = edge.type === 'transformer';
+
+    let isReverseFlow = false;
+    if (isPlaybackActive && liveMetrics && isActive) {
+      const edgeLabelLower = edge.label.toLowerCase();
+      for (const fid of FEEDER_IDS) {
+        if (edgeLabelLower.includes(fid.toLowerCase())) {
+          const feederKey = `power_${fid}_kw` as keyof LiveMetrics;
+          const feederPower = liveMetrics[feederKey] as number | undefined;
+          if (feederPower != null && feederPower < 0) {
+            isReverseFlow = true;
+          }
+          break;
+        }
+      }
+    }
+
+    const strokeColor = !isActive ? '#6b7280' : isReverseFlow ? '#f97316' : '#22c55e';
+    const strokeWidth = isReverseFlow ? 3 : 2;
 
     edges.push({
       id: edge.id,
-      source: edge.source,
-      target: edge.target,
+      source: isReverseFlow ? edge.target : edge.source,
+      target: isReverseFlow ? edge.source : edge.target,
       type: 'smoothstep',
-      animated: isActive && !isTransformer,
-      style: {
-        stroke: isTransformer ? '#a855f7' : isActive ? '#3b82f6' : '#6b7280',
-        strokeWidth: isTransformer ? 3 : 2,
-        strokeDasharray: isTransformer ? '5 5' : undefined,
-      },
+      animated: isActive,
+      style: { stroke: strokeColor, strokeWidth },
       markerEnd: {
         type: MarkerType.ArrowClosed,
-        color: isTransformer ? '#a855f7' : '#3b82f6',
-        width: 15,
-        height: 15,
+        color: strokeColor,
+        width: 12,
+        height: 12,
       },
       label: edge.label,
-      labelStyle: {
-        fill: '#9ca3af',
-        fontSize: 9,
-        fontWeight: 500,
-      },
-      labelBgStyle: {
-        fill: '#1e293b',
-        fillOpacity: 0.9,
-      },
-      labelBgPadding: [4, 2] as [number, number],
-      labelBgBorderRadius: 4,
+      labelStyle: { fill: '#9ca3af', fontSize: 8, fontWeight: 500 },
+      labelBgStyle: { fill: '#1e293b', fillOpacity: 0.9 },
+      labelBgPadding: [3, 2] as [number, number],
+      labelBgBorderRadius: 3,
     });
-  });
+  }
 
   return { nodes, edges };
 }
 
+// ─── Side Panel Components ─────────────────────────────────────
+function VoltageStatusLegend() {
+  return (
+    <div className="card">
+      <h3 className="font-semibold text-white mb-3 text-sm">Voltage Status</h3>
+      <div className="space-y-2 text-xs">
+        <div className="flex items-center">
+          <div className="w-3 h-3 rounded-full bg-green-500 mr-2" />
+          <span className="text-slate-300">Normal (0.95-1.05 pu)</span>
+        </div>
+        <div className="flex items-center">
+          <div className="w-3 h-3 rounded-full bg-amber-500 mr-2" />
+          <span className="text-slate-300">Low (&lt;0.95 pu)</span>
+        </div>
+        <div className="flex items-center">
+          <div className="w-3 h-3 rounded-full bg-red-500 mr-2" />
+          <span className="text-slate-300">High (&gt;1.05 pu)</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ConnectionTypesLegend() {
+  return (
+    <div className="card">
+      <h3 className="font-semibold text-white mb-3 text-sm">Connections</h3>
+      <div className="space-y-2 text-xs">
+        <div className="flex items-center">
+          <div className="w-6 h-0.5 bg-green-500 mr-2" />
+          <span className="text-slate-300">Active Line</span>
+        </div>
+        <div className="flex items-center">
+          <div className="w-6 h-0.5 mr-2" style={{ backgroundColor: '#f97316' }} />
+          <span className="text-slate-300">Reverse Flow (export)</span>
+        </div>
+        <div className="flex items-center">
+          <TransformerSvg size={16} status="normal" className="mr-2" />
+          <span className="text-slate-300">Transformer</span>
+        </div>
+        <div className="flex items-center">
+          <div className="w-6 h-0.5 bg-gray-500 mr-2" />
+          <span className="text-slate-300">Inactive</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SelectedNodePanel({ node }: { node: any }) {
+  if (!node) return null;
+  return (
+    <div className="card border-blue-500 border">
+      <h3 className="font-semibold text-white mb-3 text-sm">Selected: {node.id}</h3>
+      <div className="space-y-2 text-xs">
+        {node.base_kv !== undefined && (
+          <div className="flex justify-between">
+            <span className="text-slate-400">Base Voltage:</span>
+            <span className="text-white">{node.base_kv} kV</span>
+          </div>
+        )}
+        {node.voltage_pu && (
+          <div className="flex justify-between">
+            <span className="text-slate-400">Voltage (pu):</span>
+            <span className={`font-medium ${
+              node.voltage_pu[0] < 0.95 ? 'text-amber-400'
+                : node.voltage_pu[0] > 1.05 ? 'text-red-400'
+                : 'text-green-400'
+            }`}>
+              {node.voltage_pu[0]?.toFixed(4)}
+            </span>
+          </div>
+        )}
+        {node.load && (
+          <>
+            <div className="border-t border-slate-600 pt-2 mt-2">
+              <span className="text-slate-300 font-medium">Connected Load:</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-400">Power:</span>
+              <span className="text-white">{node.load.kw?.toFixed(1)} kW</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-400">Reactive:</span>
+              <span className="text-white">{node.load.kvar?.toFixed(1)} kVAR</span>
+            </div>
+          </>
+        )}
+        {node.generator && (
+          <>
+            <div className="border-t border-slate-600 pt-2 mt-2">
+              <span className="text-slate-300 font-medium">Generator:</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-400">Type:</span>
+              <span className="text-white">{node.generator.type}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-400">Output:</span>
+              <span className="text-green-400">{node.generator.kw?.toFixed(1)} kW</span>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function NetworkStats({ topology }: { topology: Topology | null }) {
+  const stats = useMemo(() => {
+    if (!topology) return null;
+    const genNodes = topology.nodes.filter(n =>
+      n.label.toLowerCase().includes('pv') ||
+      n.label.toLowerCase().includes('solar') ||
+      n.label.toLowerCase().includes('wind')
+    ).length;
+    return {
+      totalBuses: topology.nodes.length,
+      totalLines: topology.edges.filter(e => e.type === 'line').length,
+      transformers: topology.edges.filter(e => e.type === 'transformer').length,
+      generators: genNodes,
+    };
+  }, [topology]);
+
+  if (!stats) return null;
+
+  return (
+    <div className="card">
+      <h3 className="font-semibold text-white mb-3 text-sm">Network Statistics</h3>
+      <div className="space-y-2 text-xs">
+        <div className="flex justify-between">
+          <span className="text-slate-400">Total Buses</span>
+          <span className="text-white font-medium">{stats.totalBuses}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-slate-400">Total Lines</span>
+          <span className="text-white font-medium">{stats.totalLines}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-slate-400">Transformers</span>
+          <span className="text-white font-medium">{stats.transformers}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-slate-400">DG Units</span>
+          <span className="text-white font-medium">{stats.generators}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main GridViewer Component ──────────────────────────────────
 export default function GridViewer() {
-  const { gridState, topology, setTopology } = useGridStore();
+  const {
+    gridState,
+    topology,
+    setTopology,
+    playbackPlaying,
+    playbackStepIndex,
+    liveMetrics,
+  } = useGridStore();
+
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [loading, setLoading] = useState(false);
   const [selectedNode, setSelectedNode] = useState<any>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [rfInstance, setRfInstance] = useState<ReactFlowInstance | null>(null);
+  const gridContainerRef = useRef<HTMLDivElement>(null);
+
+  const isActive = playbackPlaying;
 
   // Load topology
   const loadTopology = useCallback(async () => {
@@ -266,62 +445,76 @@ export default function GridViewer() {
     }
   }, [setTopology]);
 
-  // Load on mount and reload when gridState becomes available (after simulation)
   useEffect(() => {
     loadTopology();
   }, [loadTopology]);
 
-  // Reload topology when gridState appears for the first time (pipeline just ran)
   useEffect(() => {
     if (gridState && !topology) {
       loadTopology();
     }
   }, [gridState, topology, loadTopology]);
 
-  // Update ReactFlow when topology or grid state changes
+  // Update ReactFlow every 15-minute step
   useEffect(() => {
     if (topology) {
-      const { nodes: flowNodes, edges: flowEdges } = calculateLayout(topology, gridState);
+      const { nodes: flowNodes, edges: flowEdges } = buildFlowGraph(
+        topology,
+        gridState,
+        liveMetrics,
+        isActive,
+      );
       setNodes(flowNodes);
       setEdges(flowEdges);
     }
-  }, [topology, gridState, setNodes, setEdges]);
+  }, [topology, gridState, setNodes, setEdges, playbackStepIndex, isActive]);
 
   // Handle node click
   const onNodeClick = useCallback((_: any, node: Node) => {
+    if (node.id.startsWith('__xfmr_')) return;
+
     const busData = gridState?.buses?.[node.id];
-    const loadData = gridState?.loads ? Object.values(gridState.loads).find((l: any) => l.bus === node.id) : null;
-    const genData = gridState?.generators ? Object.values(gridState.generators).find((g: any) => g.bus === node.id) : null;
+    const loadData = gridState?.loads
+      ? Object.values(gridState.loads).find((l: any) => l.bus === node.id)
+      : null;
+    const genData = gridState?.generators
+      ? Object.values(gridState.generators).find((g: any) => g.bus === node.id)
+      : null;
 
     setSelectedNode({
       id: node.id,
       ...busData,
       load: loadData,
       generator: genData,
-      category: node.data.category,
     });
   }, [gridState]);
 
-  // Statistics
-  const stats = useMemo(() => {
-    if (!topology) return null;
+  // Fullscreen toggle
+  const toggleFullscreen = useCallback(() => {
+    if (!gridContainerRef.current) return;
+    if (!isFullscreen) {
+      gridContainerRef.current.requestFullscreen?.().catch(() => {});
+      setIsFullscreen(true);
+    } else {
+      document.exitFullscreen?.().catch(() => {});
+      setIsFullscreen(false);
+    }
+  }, [isFullscreen]);
 
-    const genNodes = topology.nodes.filter(n =>
-      n.label.toLowerCase().includes('pv') ||
-      n.label.toLowerCase().includes('solar') ||
-      n.label.toLowerCase().includes('wind')
-    ).length;
-
-    return {
-      totalBuses: topology.nodes.length,
-      totalLines: topology.edges.filter(e => e.type === 'line').length,
-      transformers: topology.edges.filter(e => e.type === 'transformer').length,
-      generators: genNodes,
+  useEffect(() => {
+    const handler = () => {
+      if (!document.fullscreenElement) setIsFullscreen(false);
     };
-  }, [topology]);
+    document.addEventListener('fullscreenchange', handler);
+    return () => document.removeEventListener('fullscreenchange', handler);
+  }, []);
+
+  const resetView = useCallback(() => {
+    rfInstance?.fitView({ padding: 0.2 });
+  }, [rfInstance]);
 
   return (
-    <div className="space-y-6 h-full">
+    <div className="space-y-4 h-full flex flex-col">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -329,39 +522,77 @@ export default function GridViewer() {
             <Network className="w-6 h-6 mr-2 text-blue-400" />
             Grid Topology Viewer
           </h1>
-          <p className="text-slate-400">Interactive power system network visualization</p>
+          <p className="text-slate-400 text-sm">Interactive power system network visualization</p>
         </div>
-        <button
-          onClick={loadTopology}
-          disabled={loading}
-          className="btn-secondary flex items-center"
-        >
-          <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-          Refresh
-        </button>
       </div>
 
       {/* Main Content */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 h-[calc(100vh-220px)]">
+      <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-4 gap-4">
         {/* Topology View */}
-        <div className="lg:col-span-3 card p-0 overflow-hidden">
+        <div
+          ref={gridContainerRef}
+          className={`lg:col-span-3 card p-0 overflow-hidden relative ${
+            isFullscreen ? 'fullscreen-grid' : ''
+          }`}
+        >
+          {/* Toolbar */}
+          <div className="absolute top-2 left-2 z-10 flex items-center space-x-2">
+            <button
+              onClick={loadTopology}
+              disabled={loading}
+              className="bg-slate-700/90 hover:bg-slate-600 text-white p-1.5 rounded-md text-xs flex items-center"
+              title="Refresh topology"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+            </button>
+            <button
+              onClick={resetView}
+              className="bg-slate-700/90 hover:bg-slate-600 text-white p-1.5 rounded-md text-xs flex items-center"
+              title="Reset view"
+            >
+              <LocateFixed className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={toggleFullscreen}
+              className="bg-slate-700/90 hover:bg-slate-600 text-white p-1.5 rounded-md text-xs flex items-center"
+              title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+            >
+              {isFullscreen ? <Minimize className="w-3.5 h-3.5" /> : <Maximize className="w-3.5 h-3.5" />}
+            </button>
+          </div>
+
+          {/* No data prompt */}
+          {!topology && !loading && (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="text-center">
+                <Network className="w-12 h-12 text-slate-600 mx-auto mb-3" />
+                <p className="text-slate-400 text-sm">No topology data</p>
+                <p className="text-slate-500 text-xs mt-1">
+                  Run a simulation to load the grid topology
+                </p>
+              </div>
+            </div>
+          )}
+
           <ReactFlow
             nodes={nodes}
             edges={edges}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onNodeClick={onNodeClick}
+            onInit={setRfInstance}
             nodeTypes={nodeTypes}
             fitView
             fitViewOptions={{ padding: 0.2 }}
-            minZoom={0.3}
-            maxZoom={2}
+            minZoom={0.2}
+            maxZoom={3}
             attributionPosition="bottom-right"
           >
             <Background color="#374151" gap={30} size={1} />
             <Controls className="!bg-slate-800 !border-slate-600 !rounded-lg" />
             <MiniMap
               nodeColor={(node) => {
+                if (node.id.startsWith('__xfmr_')) return '#a855f7';
                 const status = node.data?.voltageStatus;
                 if (status === 'low') return '#f59e0b';
                 if (status === 'high') return '#ef4444';
@@ -376,162 +607,11 @@ export default function GridViewer() {
         </div>
 
         {/* Side Panel */}
-        <div className="space-y-4 overflow-y-auto">
-          {/* Legend */}
-          <div className="card">
-            <h3 className="font-semibold text-white mb-3">Voltage Status</h3>
-            <div className="space-y-2 text-sm">
-              <div className="flex items-center">
-                <div className="w-4 h-4 rounded bg-green-600 border-2 border-green-400 mr-2" />
-                <span className="text-slate-300">Normal (0.95-1.05 pu)</span>
-              </div>
-              <div className="flex items-center">
-                <div className="w-4 h-4 rounded bg-amber-600 border-2 border-amber-400 mr-2" />
-                <span className="text-slate-300">Low Voltage (&lt;0.95 pu)</span>
-              </div>
-              <div className="flex items-center">
-                <div className="w-4 h-4 rounded bg-red-600 border-2 border-red-400 mr-2" />
-                <span className="text-slate-300">High Voltage (&gt;1.05 pu)</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Icon Legend */}
-          <div className="card">
-            <h3 className="font-semibold text-white mb-3">Component Icons</h3>
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <div className="flex items-center gap-1.5 text-slate-300">
-                <Sun className="w-4 h-4 text-yellow-400" />
-                <span>Solar PV</span>
-              </div>
-              <div className="flex items-center gap-1.5 text-slate-300">
-                <Wind className="w-4 h-4 text-cyan-400" />
-                <span>Wind Farm</span>
-              </div>
-              <div className="flex items-center gap-1.5 text-slate-300">
-                <Cross className="w-4 h-4 text-red-400" />
-                <span>Hospital</span>
-              </div>
-              <div className="flex items-center gap-1.5 text-slate-300">
-                <GraduationCap className="w-4 h-4 text-blue-400" />
-                <span>School</span>
-              </div>
-              <div className="flex items-center gap-1.5 text-slate-300">
-                <Factory className="w-4 h-4 text-orange-400" />
-                <span>Industrial</span>
-              </div>
-              <div className="flex items-center gap-1.5 text-slate-300">
-                <Home className="w-4 h-4 text-green-400" />
-                <span>Residential</span>
-              </div>
-              <div className="flex items-center gap-1.5 text-slate-300">
-                <Zap className="w-4 h-4 text-purple-400" />
-                <span>Substation</span>
-              </div>
-              <div className="flex items-center gap-1.5 text-slate-300">
-                <Store className="w-4 h-4 text-pink-400" />
-                <span>Commercial</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Connection Types */}
-          <div className="card">
-            <h3 className="font-semibold text-white mb-3">Connections</h3>
-            <div className="space-y-2 text-sm">
-              <div className="flex items-center">
-                <div className="w-8 h-0.5 bg-blue-500 mr-2" />
-                <span className="text-slate-300">Active Line</span>
-              </div>
-              <div className="flex items-center">
-                <div className="w-8 h-0.5 bg-purple-500 mr-2" style={{ backgroundImage: 'repeating-linear-gradient(90deg, #a855f7 0px, #a855f7 5px, transparent 5px, transparent 10px)' }} />
-                <span className="text-slate-300">Transformer</span>
-              </div>
-              <div className="flex items-center">
-                <div className="w-8 h-0.5 bg-gray-500 mr-2" />
-                <span className="text-slate-300">Inactive</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Selected Node Details */}
-          {selectedNode && (
-            <div className="card border-blue-500 border">
-              <h3 className="font-semibold text-white mb-3">Selected: {selectedNode.id}</h3>
-              <div className="space-y-2 text-sm">
-                {selectedNode.base_kv !== undefined && (
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Base Voltage:</span>
-                    <span className="text-white">{selectedNode.base_kv} kV</span>
-                  </div>
-                )}
-                {selectedNode.voltage_pu && (
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Voltage (pu):</span>
-                    <span className={`font-medium ${
-                      selectedNode.voltage_pu[0] < 0.95 ? 'text-amber-400' :
-                      selectedNode.voltage_pu[0] > 1.05 ? 'text-red-400' : 'text-green-400'
-                    }`}>
-                      {selectedNode.voltage_pu[0]?.toFixed(4)}
-                    </span>
-                  </div>
-                )}
-                {selectedNode.load && (
-                  <>
-                    <div className="border-t border-slate-600 pt-2 mt-2">
-                      <span className="text-slate-300 font-medium">Connected Load:</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Power:</span>
-                      <span className="text-white">{selectedNode.load.kw?.toFixed(1)} kW</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Reactive:</span>
-                      <span className="text-white">{selectedNode.load.kvar?.toFixed(1)} kVAR</span>
-                    </div>
-                  </>
-                )}
-                {selectedNode.generator && (
-                  <>
-                    <div className="border-t border-slate-600 pt-2 mt-2">
-                      <span className="text-slate-300 font-medium">Generator:</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Type:</span>
-                      <span className="text-white">{selectedNode.generator.type}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Output:</span>
-                      <span className="text-green-400">{selectedNode.generator.kw?.toFixed(1)} kW</span>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Network Statistics */}
-          <div className="card">
-            <h3 className="font-semibold text-white mb-3">Network Statistics</h3>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-slate-400">Total Buses</span>
-                <span className="text-white font-medium">{stats?.totalBuses || 0}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-400">Total Lines</span>
-                <span className="text-white font-medium">{stats?.totalLines || 0}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-400">Transformers</span>
-                <span className="text-white font-medium">{stats?.transformers || 0}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-400">DG Units</span>
-                <span className="text-white font-medium">{stats?.generators || 0}</span>
-              </div>
-            </div>
-          </div>
+        <div className="space-y-3 overflow-y-auto">
+          <VoltageStatusLegend />
+          <ConnectionTypesLegend />
+          <SelectedNodePanel node={selectedNode} />
+          <NetworkStats topology={topology} />
         </div>
       </div>
     </div>

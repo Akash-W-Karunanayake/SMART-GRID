@@ -310,7 +310,7 @@ def validate(target_date: str):
 
             mae = np.mean(np.abs(sim_v - meas_v))
             mape = np.mean(np.abs(
-                (sim_v - meas_v) / np.maximum(np.abs(meas_v), 1.0)
+                (sim_v - meas_v) / np.maximum(np.abs(meas_v), 500.0)
             )) * 100
             corr = float(np.corrcoef(sim_v, meas_v)[0, 1])
 

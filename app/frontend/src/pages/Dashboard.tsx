@@ -17,6 +17,7 @@ import {
   Activity,
   Zap,
   Sun,
+  Wind,
   AlertTriangle,
   Thermometer,
   CheckCircle,
@@ -26,7 +27,7 @@ import {
   Minimize,
   LocateFixed,
 } from 'lucide-react';
-import { useGridStore } from '../stores/gridStore';
+import { useGridStore, type LiveMetrics } from '../stores/gridStore';
 import api from '../services/api';
 import type { Topology, TopologyNode, TopologyEdge } from '../types';
 import { getGridSvgIcon, type GridSvgProps } from '../components/grid/GridSvgIcons';
@@ -123,11 +124,41 @@ const nodeTypes = {
   transformerNode: TransformerNode,
 };
 
+// ─── PV capacity map for capacity-weighted output display ──────
+// Keyed by substring of node label (case-insensitive match).
+// Total capacity: 47320 kW across 20 PV systems.
+const PV_CAPACITY_KW: Record<string, number> = {
+  pv_f06_factory: 5000,
+  pv_f06_smallind: 3500,
+  pv_f06_residential: 1640,
+  pv_f07_village: 4000,
+  pv_f07_agricultural: 3500,
+  pv_f07_rural: 1670,
+  pv_f08_commercial: 2500,
+  pv_f08_residential: 2000,
+  pv_f08_mixed: 940,
+  pv_f09_town: 200,
+  pv_f09_village: 150,
+  pv_f10_town: 3500,
+  pv_f10_fishing: 2000,
+  pv_f10_coastal: 1500,
+  pv_f11_hospital: 1500,
+  pv_f11_commercial: 3500,
+  pv_f11_apartments: 3000,
+  pv_f11_mixedres: 2220,
+  pv_f12_res1: 3000,
+  pv_f12_res2: 2000,
+};
+const TOTAL_PV_CAPACITY_KW = 47320;
+
+// ─── Feeder IDs for per-feeder power mapping ───────────────────
+const FEEDER_IDS = ['F06', 'F07', 'F08', 'F09', 'F10', 'F11', 'F12'] as const;
+
 // ─── Build ReactFlow graph with radial layout ──────────────────
 function buildFlowGraph(
   topology: Topology,
   gridState: any,
-  liveMetrics?: { hour: number; total_solar_kw: number; total_generation_kw: number } | null,
+  liveMetrics?: LiveMetrics | null,
   isPlaybackActive?: boolean,
 ): { nodes: Node[]; edges: Edge[] } {
   const nodes: Node[] = [];
@@ -169,7 +200,10 @@ function buildFlowGraph(
   for (const node of topology.nodes) {
     const pos = posMap.get(node.id) ?? { x: 0, y: 0 };
     const busData = gridState?.buses?.[node.id];
-    const voltagePu = busData?.voltage_pu?.[0];
+
+    // During playback: prefer per-step bus voltage; fall back to gridState
+    const liveV = liveMetrics?.bus_voltages?.[node.id];
+    const voltagePu = liveV ?? busData?.voltage_pu?.[0];
     const voltageStatus: 'normal' | 'low' | 'high' = voltagePu
       ? voltagePu < 0.95 ? 'low'
         : voltagePu > 1.05 ? 'high'
@@ -187,10 +221,11 @@ function buildFlowGraph(
 
     // Show live output for generation nodes during playback
     let liveOutputKw: number | null = null;
-    if (isPlaybackActive && liveMetrics) {
-      if (isSolar) liveOutputKw = liveMetrics.total_solar_kw / 20; // approx per-unit (20 PV systems)
-      else if (isWind) liveOutputKw = null; // wind data available but no per-unit split needed
-      else if (isGenerator) liveOutputKw = null;
+    if (isPlaybackActive && liveMetrics && isSolar) {
+      // Capacity-weighted fraction: node's rated kW / total fleet kW
+      const nodeCapacity = PV_CAPACITY_KW[nameLower] ?? (TOTAL_PV_CAPACITY_KW / 20);
+      const fraction = nodeCapacity / TOTAL_PV_CAPACITY_KW;
+      liveOutputKw = liveMetrics.total_solar_kw * fraction;
     }
 
     nodes.push({
@@ -255,21 +290,38 @@ function buildFlowGraph(
     });
   }
 
-  // Create line edges (green for active, red for overloaded, gray for inactive)
+  // Create line edges with reverse flow detection
+  // Edge colors: green=normal import, orange=reverse flow (export), gray=inactive, red=overloaded
   for (const edge of lineEdges) {
     const lineData = gridState?.lines?.[edge.label];
     const isActive = lineData?.enabled !== false;
-    const isOverloaded = false; // TODO: detect overload from lineData if available
 
-    const strokeColor = !isActive ? '#6b7280' : isOverloaded ? '#ef4444' : '#22c55e';
+    // Detect reverse power flow: check if this edge belongs to a feeder with negative power
+    let isReverseFlow = false;
+    if (isPlaybackActive && liveMetrics && isActive) {
+      const edgeLabelLower = edge.label.toLowerCase();
+      for (const fid of FEEDER_IDS) {
+        if (edgeLabelLower.includes(fid.toLowerCase())) {
+          const feederKey = `power_${fid}_kw` as keyof LiveMetrics;
+          const feederPower = liveMetrics[feederKey] as number | undefined;
+          if (feederPower != null && feederPower < 0) {
+            isReverseFlow = true;
+          }
+          break;
+        }
+      }
+    }
+
+    const strokeColor = !isActive ? '#6b7280' : isReverseFlow ? '#f97316' : '#22c55e';
+    const strokeWidth = isReverseFlow ? 3 : 2;
 
     edges.push({
       id: edge.id,
-      source: edge.source,
-      target: edge.target,
+      source: isReverseFlow ? edge.target : edge.source,
+      target: isReverseFlow ? edge.source : edge.target,
       type: 'smoothstep',
       animated: isActive,
-      style: { stroke: strokeColor, strokeWidth: 2 },
+      style: { stroke: strokeColor, strokeWidth },
       markerEnd: {
         type: MarkerType.ArrowClosed,
         color: strokeColor,
@@ -318,6 +370,10 @@ function ConnectionTypesLegend() {
         <div className="flex items-center">
           <div className="w-6 h-0.5 bg-green-500 mr-2" />
           <span className="text-slate-300">Active Line</span>
+        </div>
+        <div className="flex items-center">
+          <div className="w-6 h-0.5 mr-2" style={{ backgroundColor: '#f97316' }} />
+          <span className="text-slate-300">Reverse Flow (export)</span>
         </div>
         <div className="flex items-center">
           <TransformerSvg size={16} status="normal" className="mr-2" />
@@ -489,12 +545,7 @@ export default function Dashboard() {
     }
   }, [gridState, topology, loadTopology]);
 
-  // Compute a coarse "hour bucket" that changes every hour (not every 15 min)
-  // to avoid excessive graph rebuilds during playback
-  const hourBucket = liveMetrics ? Math.floor(liveMetrics.hour) : -1;
-  const solarIsActive = liveMetrics ? liveMetrics.total_solar_kw > 0 : false;
-
-  // Update ReactFlow when topology, grid state, or playback hour changes
+  // Update ReactFlow every 15-minute step (playbackStepIndex) for live voltage/flow updates
   useEffect(() => {
     if (topology) {
       const { nodes: flowNodes, edges: flowEdges } = buildFlowGraph(
@@ -506,7 +557,7 @@ export default function Dashboard() {
       setNodes(flowNodes);
       setEdges(flowEdges);
     }
-  }, [topology, gridState, setNodes, setEdges, hourBucket, solarIsActive, isActive]);
+  }, [topology, gridState, setNodes, setEdges, playbackStepIndex, isActive]);
 
   // Handle node click
   const onNodeClick = useCallback((_: any, node: Node) => {
@@ -569,6 +620,10 @@ export default function Dashboard() {
   const displaySolar = isActive && liveMetrics
     ? liveMetrics.total_solar_kw.toFixed(1)
     : gridState?.summary.total_solar_kw?.toFixed(1) ?? '\u2014';
+
+  const displayWind = isActive && liveMetrics
+    ? liveMetrics.total_wind_kw.toFixed(1)
+    : (gridState?.summary as any)?.total_wind_kw?.toFixed(1) ?? '\u2014';
 
   const displayGeneration = isActive && liveMetrics
     ? (liveMetrics.total_generation_kw / 1000).toFixed(2) + ' MW'
@@ -646,8 +701,8 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Stats Grid - 6 cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+      {/* Stats Grid - 7 cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
         <StatCard
           title="Total Load"
           value={displayLoad}
@@ -670,6 +725,13 @@ export default function Dashboard() {
           color={isActive && liveMetrics && liveMetrics.total_solar_kw > 0 ? 'green' : 'amber'}
         />
         <StatCard
+          title="Wind Generation"
+          value={displayWind}
+          unit="kW"
+          icon={Wind}
+          color={isActive && liveMetrics && liveMetrics.total_wind_kw > 0 ? 'green' : 'blue'}
+        />
+        <StatCard
           title="System Losses"
           value={displayLosses}
           unit="kW"
@@ -689,6 +751,40 @@ export default function Dashboard() {
           color={violationColor}
         />
       </div>
+
+      {/* Feeder-wise Net Load Panel */}
+      {isActive && liveMetrics && (
+        <div className="card py-2 px-4">
+          <h3 className="text-sm font-semibold text-white mb-2">Feeder-wise Net Load</h3>
+          <div className="grid grid-cols-7 gap-2">
+            {FEEDER_IDS.map((fid) => {
+              const key = `power_${fid}_kw` as keyof LiveMetrics;
+              const val = liveMetrics[key] as number | undefined;
+              const isReverse = val != null && val < 0;
+              return (
+                <div
+                  key={fid}
+                  className={`rounded-lg px-3 py-1.5 text-center border ${
+                    isReverse
+                      ? 'bg-orange-900/40 border-orange-600'
+                      : 'bg-slate-800 border-slate-600'
+                  }`}
+                >
+                  <div className="text-xs text-slate-400">{fid}</div>
+                  <div className={`text-sm font-mono font-bold ${
+                    isReverse ? 'text-orange-400' : 'text-white'
+                  }`}>
+                    {val != null ? `${(val / 1000).toFixed(2)}` : '\u2014'}
+                  </div>
+                  <div className="text-[10px] text-slate-500">
+                    {isReverse ? 'MW (export)' : 'MW'}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Main Grid Topology Viewer */}
       <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-4 gap-4">

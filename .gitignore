@@ -58,6 +58,9 @@ REAL_DATA_INTERGRATION_WORKFLOW.md
 test_results/
 Resources/
 images/
+Summary.txt
+update.md
+issues.txt
 
 # Python
 __pycache__/
