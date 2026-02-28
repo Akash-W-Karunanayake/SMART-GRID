@@ -105,4 +105,46 @@ research/
     graph/                 ← grid topology pickle
   models/                  ← Saved .pt checkpoints
   results/metrics/plots/reports/
+
+---------------------------------------------------------------------------------- NEW FLOW 
+● Execution Workflow                                                                                                         
+  Stage 1: Generate Dataset (40K samples)                                                                                    
+  # Fix HIF + current angles are already in code                                                                          
+  python research/01_dataset_generation/run_generation.py --samples 40000
+
+  Stage 2: Preprocess
+
+  python research/02_data_preprocessing/run_preprocessing.py
+  Uses physics-aware augmentation (not SMOTE), normalizes 6-feature currents.
+
+  Stage 3: Pre-train CNN-Transformer (Phase 1)
+
+  python research/03_cnn_transformer/train.py --epochs 20
+  Detection + type only (phase/location lambdas = 0).
+
+  Stage 4: Pre-train R-GNN (Phase 2)
+
+  # Phase 2a: detection only
+  python research/04_r_gnn/train.py --phase 2a --epochs 20
+
+  # Phase 2b: transfer learning — freeze backbone, train all heads, then fine-tune
+  python research/04_r_gnn/train.py --phase 2b
+
+  Stage 5: Train Hybrid BHAF (Phase 3)
+
+  python research/05_hybrid_model/train.py
+  Loads pre-trained branches automatically from models/cnn_transformer/best_model.pt and models/r_gnn/best_model.pt. Runs:
+  - 3a: Frozen branches, train fusion+heads (5 epochs)
+  - 3b: Unfreeze all, differential LR (40 epochs, cosine restarts)
+
+  Stage 6: Benchmark
+
+  python research/06_model_evaluation/benchmark.py
+  Compares SVM → CNN-T v2 → R-GNN v2 → Hybrid BHAF v2 across all 4 tasks.
+
+  ---
+  Key dependency chain: Stage 1 → 2 → 3 & 4 (parallel) → 5 → 6
+
+  Stages 3 and 4 can run independently since they use different data formats (NPZ vs PyG pkl). Stage 5 requires both      
+  branch checkpoints.
 ```

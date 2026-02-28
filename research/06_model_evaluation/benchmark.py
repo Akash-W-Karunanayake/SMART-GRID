@@ -1,6 +1,6 @@
 """
 Benchmark — Compare all models on the test set.
-Runs: SVM baseline, 1D-CNN only, plain GCN, CNN-Transformer, R-GNN, Hybrid.
+Runs: SVM baseline, CNN-Transformer (v2 DenseNet), R-GNN (v2), Hybrid BHAF (v2).
 
 Usage:
     python research/06_model_evaluation/benchmark.py
@@ -43,7 +43,7 @@ PLOTS_DIR   = RESEARCH_DIR / "results" / "plots"
 
 def load_test_npz():
     d = np.load(TEST_NPZ, allow_pickle=True)
-    I = d["current_seq"]
+    I = d["current_seq"]   # [N, T, N_branches, 6]
     N, T, B, F = I.shape
     X = I.reshape(N, T, B * F)
     return {
@@ -67,14 +67,13 @@ def load_test_pkl():
 # ---------------------------------------------------------------------------
 
 def run_svm_baseline(data: dict) -> dict:
-    """SVM on Vrms-style aggregated features (current RMS per branch per phase)."""
+    """SVM on RMS-style aggregated features."""
     logger.info("Running SVM baseline...")
     try:
         from sklearn.svm import SVC
         from sklearn.preprocessing import StandardScaler
 
-        X = data["X"]   # [N, T, F]
-        # Feature: RMS over time per feature → [N, F]
+        X = data["X"]
         X_feat = np.sqrt((X ** 2).mean(axis=1))
         sc     = StandardScaler()
         X_s    = sc.fit_transform(X_feat)
@@ -101,24 +100,29 @@ def run_svm_baseline(data: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Helper: evaluate a PyTorch model from checkpoint
+# Model evaluation helpers
 # ---------------------------------------------------------------------------
 
-def eval_torch_model(model, data_dict, task_keys=None):
-    """Evaluate model returning predictions for all tasks."""
-    if task_keys is None:
-        task_keys = ["detection", "type", "phase", "location"]
-    model.eval()
-    preds = {k: [] for k in task_keys}
-    return preds   # placeholder — populated in individual run functions
+def _eval_all_tasks(preds, trues):
+    """Compute metrics for all tasks from prediction dicts."""
+    result = {}
+    for task, ytrue_key in [("detection","y_det"), ("type","y_type"),
+                              ("phase","y_ph"), ("location","y_loc")]:
+        if task in preds and ytrue_key in trues:
+            m = compute_all_metrics(
+                np.array(trues[ytrue_key]), np.array(preds[task]), task)
+            result[f"{task}_accuracy"] = m["accuracy"]
+            result[f"{task}_f1_macro"] = m["f1_macro"]
+            result[f"{task}_mcc"]      = m["mcc"]
+    return result
 
 
 def run_cnn_transformer(data: dict) -> dict:
-    logger.info("Evaluating CNN-Transformer...")
+    logger.info("Evaluating CNN-Transformer (v2 DenseNet)...")
     ckpt_path = RESEARCH_DIR / "models" / "cnn_transformer" / "best_model.pt"
     if not ckpt_path.exists():
         logger.warning("CNN-T checkpoint not found — skipping")
-        return {"model": "CNN-Transformer", "type_accuracy": 0, "type_f1_macro": 0, "type_mcc": 0}
+        return {"model": "CNN-Transformer-v2"}
 
     try:
         import importlib.util
@@ -126,8 +130,6 @@ def run_cnn_transformer(data: dict) -> dict:
             "cnn_t_model", RESEARCH_DIR / "03_cnn_transformer" / "model.py")
         _mod = importlib.util.module_from_spec(_spec); _spec.loader.exec_module(_mod)
         CNNTransformerModel = _mod.CNNTransformerModel
-        sys.path.insert(0, str(RESEARCH_DIR / "03_cnn_transformer"))
-        from train import FaultDataset
         ckpt = torch.load(ckpt_path, map_location="cpu")
         model = CNNTransformerModel(ckpt["in_features"], ckpt["n_buses"])
         model.load_state_dict(ckpt["model_state"])
@@ -141,25 +143,22 @@ def run_cnn_transformer(data: dict) -> dict:
                 for k in preds:
                     preds[k].extend(out[k].argmax(1).numpy().tolist())
 
-        result = {"model": "CNN-Transformer"}
-        for task, ytrue_key in [("type","y_type"), ("detection","y_det"),
-                                  ("phase","y_ph"), ("location","y_loc")]:
-            m = compute_all_metrics(data[ytrue_key], np.array(preds[task]), task)
-            result[f"{task}_accuracy"] = m["accuracy"]
-            result[f"{task}_f1_macro"] = m["f1_macro"]
-            result[f"{task}_mcc"]      = m["mcc"]
+        result = {"model": "CNN-Transformer-v2"}
+        result.update(_eval_all_tasks(preds, {
+            "y_det": data["y_det"], "y_type": data["y_type"],
+            "y_ph": data["y_ph"], "y_loc": data["y_loc"]}))
         return result
     except Exception as e:
         logger.warning(f"CNN-T eval failed: {e}")
-        return {"model": "CNN-Transformer", "type_accuracy": 0, "type_f1_macro": 0, "type_mcc": 0}
+        return {"model": "CNN-Transformer-v2"}
 
 
 def run_r_gnn(pyg_list: list) -> dict:
-    logger.info("Evaluating R-GNN...")
+    logger.info("Evaluating R-GNN (v2)...")
     ckpt_path = RESEARCH_DIR / "models" / "r_gnn" / "best_model.pt"
     if not ckpt_path.exists() or pyg_list is None:
         logger.warning("R-GNN checkpoint or data not found — skipping")
-        return {"model": "R-GNN", "type_accuracy": 0, "type_f1_macro": 0, "type_mcc": 0}
+        return {"model": "R-GNN-v2"}
 
     try:
         import importlib.util
@@ -167,8 +166,6 @@ def run_r_gnn(pyg_list: list) -> dict:
             "rgnn_model", RESEARCH_DIR / "04_r_gnn" / "model.py")
         _mod = importlib.util.module_from_spec(_spec); _spec.loader.exec_module(_mod)
         RGNNModel = _mod.RGNNModel
-        sys.path.insert(0, str(RESEARCH_DIR / "04_r_gnn"))
-        from train import GraphFaultDataset, collate_fn
         ckpt   = torch.load(ckpt_path, map_location="cpu")
         model  = RGNNModel(n_buses=ckpt["n_buses"])
         model.load_state_dict(ckpt["model_state"])
@@ -178,36 +175,32 @@ def run_r_gnn(pyg_list: list) -> dict:
         ea = pyg_list[0].edge_attr
 
         preds = {k: [] for k in ["detection","type","phase","location"]}
-        trues = {"detection": [], "type": [], "phase": [], "location": []}
+        trues = {"y_det": [], "y_type": [], "y_ph": [], "y_loc": []}
         with torch.no_grad():
             for d in pyg_list:
-                x = d.x.unsqueeze(0)  # [1, T, N, 6]
+                x = d.x.unsqueeze(0)
                 out = model(x, ei, ea)
                 for k in preds:
                     preds[k].append(out[k].argmax(1).item())
-                trues["detection"].append(int(d.y_detection))
-                trues["type"].append(int(d.y_type))
-                trues["phase"].append(int(d.y_phase))
-                trues["location"].append(max(0, int(d.y_location)))
+                trues["y_det"].append(int(d.y_detection))
+                trues["y_type"].append(int(d.y_type))
+                trues["y_ph"].append(int(d.y_phase))
+                trues["y_loc"].append(max(0, int(d.y_location)))
 
-        result = {"model": "R-GNN"}
-        for task in ["detection","type","phase","location"]:
-            m = compute_all_metrics(np.array(trues[task]), np.array(preds[task]), task)
-            result[f"{task}_accuracy"] = m["accuracy"]
-            result[f"{task}_f1_macro"] = m["f1_macro"]
-            result[f"{task}_mcc"]      = m["mcc"]
+        result = {"model": "R-GNN-v2"}
+        result.update(_eval_all_tasks(preds, trues))
         return result
     except Exception as e:
         logger.warning(f"R-GNN eval failed: {e}")
-        return {"model": "R-GNN", "type_accuracy": 0, "type_f1_macro": 0, "type_mcc": 0}
+        return {"model": "R-GNN-v2"}
 
 
 def run_hybrid(data: dict, pyg_list: list) -> dict:
-    logger.info("Evaluating Hybrid Model...")
+    logger.info("Evaluating Hybrid BHAF Model (v2)...")
     ckpt_path = RESEARCH_DIR / "models" / "hybrid" / "best_model.pt"
     if not ckpt_path.exists() or pyg_list is None:
         logger.warning("Hybrid checkpoint or data not found — skipping")
-        return {"model": "Hybrid CNN-T+R-GNN", "type_accuracy": 0, "type_f1_macro": 0, "type_mcc": 0}
+        return {"model": "Hybrid-BHAF-v2"}
 
     try:
         import importlib.util
@@ -225,31 +218,27 @@ def run_hybrid(data: dict, pyg_list: list) -> dict:
         ea = pyg_list[0].edge_attr
 
         preds = {k: [] for k in ["detection","type","phase","location"]}
-        trues = {"detection": [], "type": [], "phase": [], "location": []}
+        trues = {"y_det": [], "y_type": [], "y_ph": [], "y_loc": []}
         X = torch.tensor(data["X"], dtype=torch.float32)
 
         with torch.no_grad():
             for i, d in enumerate(pyg_list):
-                x_cur = X[i].unsqueeze(0)         # [1, T, F]
-                x_vol = d.x.unsqueeze(0)           # [1, T, N, 6]
+                x_cur = X[i].unsqueeze(0)
+                x_vol = d.x.unsqueeze(0)
                 out = model(x_cur, x_vol, ei, ea)
                 for k in preds:
                     preds[k].append(out[k].argmax(1).item())
-                trues["detection"].append(int(d.y_detection))
-                trues["type"].append(int(d.y_type))
-                trues["phase"].append(int(d.y_phase))
-                trues["location"].append(max(0, int(d.y_location)))
+                trues["y_det"].append(int(d.y_detection))
+                trues["y_type"].append(int(d.y_type))
+                trues["y_ph"].append(int(d.y_phase))
+                trues["y_loc"].append(max(0, int(d.y_location)))
 
-        result = {"model": "Hybrid CNN-T+R-GNN"}
-        for task in ["detection","type","phase","location"]:
-            m = compute_all_metrics(np.array(trues[task]), np.array(preds[task]), task)
-            result[f"{task}_accuracy"] = m["accuracy"]
-            result[f"{task}_f1_macro"] = m["f1_macro"]
-            result[f"{task}_mcc"]      = m["mcc"]
+        result = {"model": "Hybrid-BHAF-v2"}
+        result.update(_eval_all_tasks(preds, trues))
         return result
     except Exception as e:
         logger.warning(f"Hybrid eval failed: {e}")
-        return {"model": "Hybrid CNN-T+R-GNN", "type_accuracy": 0, "type_f1_macro": 0, "type_mcc": 0}
+        return {"model": "Hybrid-BHAF-v2"}
 
 
 # ---------------------------------------------------------------------------
@@ -278,16 +267,18 @@ def save_report(results: list) -> Path:
 
 
 def print_summary_table(results: list) -> None:
-    logger.info("\n" + "="*80)
-    logger.info(f"{'Model':<30} {'Type Acc':>10} {'Type F1':>10} {'Type MCC':>10} {'Loc Acc':>10}")
-    logger.info("-"*80)
+    logger.info("\n" + "="*90)
+    logger.info(f"{'Model':<25} {'Det Acc':>8} {'Type Acc':>9} {'Type F1':>8} "
+                f"{'Phase Acc':>9} {'Loc Acc':>8}")
+    logger.info("-"*90)
     for r in results:
-        logger.info(f"{r['model']:<30} "
-                    f"{r.get('type_accuracy', 0):>10.4f} "
-                    f"{r.get('type_f1_macro', 0):>10.4f} "
-                    f"{r.get('type_mcc', 0):>10.4f} "
-                    f"{r.get('location_accuracy', 0):>10.4f}")
-    logger.info("="*80)
+        logger.info(f"{r['model']:<25} "
+                    f"{r.get('detection_accuracy', 0):>8.4f} "
+                    f"{r.get('type_accuracy', 0):>9.4f} "
+                    f"{r.get('type_f1_macro', 0):>8.4f} "
+                    f"{r.get('phase_accuracy', 0):>9.4f} "
+                    f"{r.get('location_accuracy', 0):>8.4f}")
+    logger.info("="*90)
 
 
 # ---------------------------------------------------------------------------
@@ -309,13 +300,13 @@ def main():
     # 1. SVM baseline
     results.append(run_svm_baseline(data))
 
-    # 2. CNN-Transformer
+    # 2. CNN-Transformer v2
     results.append(run_cnn_transformer(data))
 
-    # 3. R-GNN
+    # 3. R-GNN v2
     results.append(run_r_gnn(pyg_list))
 
-    # 4. Hybrid
+    # 4. Hybrid BHAF v2
     results.append(run_hybrid(data, pyg_list))
 
     # Summary table
@@ -327,7 +318,7 @@ def main():
     # Plots
     try:
         from visualizer import plot_accuracy_comparison
-        for task in ["type", "detection", "phase"]:
+        for task in ["type", "detection", "phase", "location"]:
             plot_accuracy_comparison(
                 [{"model": r["model"], f"{task}_accuracy": r.get(f"{task}_accuracy", 0)}
                  for r in results],
@@ -341,9 +332,9 @@ def main():
     try:
         from visualizer import plot_loss_curves
         for model_name, subdir in [
-            ("CNN-Transformer", "cnn_transformer"),
-            ("R-GNN",           "r_gnn"),
-            ("Hybrid",          "hybrid"),
+            ("CNN-Transformer-v2", "cnn_transformer"),
+            ("R-GNN-v2",           "r_gnn"),
+            ("Hybrid-BHAF-v2",     "hybrid"),
         ]:
             hist_path = RESEARCH_DIR / "models" / subdir / "history.json"
             plot_loss_curves(hist_path, model_name,
