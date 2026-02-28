@@ -140,7 +140,7 @@ class SimEngine:
 
         # Pre-allocate output arrays
         voltage_seq = np.zeros((TOTAL_CYCLES, N_buses, 6),    dtype=np.float32)
-        current_seq = np.zeros((TOTAL_CYCLES, N_branches, 3), dtype=np.float32)
+        current_seq = np.zeros((TOTAL_CYCLES, N_branches, 6), dtype=np.float32)
 
         # --- Step 4: Repeated Snapshot solves (one per cycle) ---
         # Dynamic mode (EMT integration) diverges on this distribution network
@@ -273,12 +273,12 @@ class SimEngine:
         Returns
         -------
         v_row : np.ndarray [N_buses, 6]    — [Va_mag, Va_ang, Vb_mag, Vb_ang, Vc_mag, Vc_ang]
-        i_row : np.ndarray [N_branches, 3] — [Ia_mag, Ib_mag, Ic_mag]
+        i_row : np.ndarray [N_branches, 6] — [Ia_mag, Ia_ang, Ib_mag, Ib_ang, Ic_mag, Ic_ang]
         """
         N_buses    = len(self._bus_names)
         N_branches = len(self._branch_names)
         v_row = np.zeros((N_buses, 6),    dtype=np.float32)
-        i_row = np.zeros((N_branches, 3), dtype=np.float32)
+        i_row = np.zeros((N_branches, 6), dtype=np.float32)
 
         # Voltages
         for i, bname in enumerate(self._bus_names):
@@ -289,13 +289,15 @@ class SimEngine:
                 v_row[i, ph * 2]     = phasor[ph * 2]     if len(phasor) > ph * 2     else 0.0
                 v_row[i, ph * 2 + 1] = phasor[ph * 2 + 1] if len(phasor) > ph * 2 + 1 else 0.0
 
-        # Currents
+        # Currents — capture both magnitude and angle per phase
         for j, bname in enumerate(self._branch_names):
             dss.Circuit.SetActiveElement(bname)
             mag_ang = dss.CktElement.CurrentsMagAng()  # [mag0, ang0, mag1, ang1, ...]
             for ph in range(3):
-                idx = ph * 2
-                i_row[j, ph] = mag_ang[idx] if mag_ang and len(mag_ang) > idx else 0.0
+                mag_idx = ph * 2
+                ang_idx = ph * 2 + 1
+                i_row[j, ph * 2]     = mag_ang[mag_idx] if mag_ang and len(mag_ang) > mag_idx else 0.0
+                i_row[j, ph * 2 + 1] = mag_ang[ang_idx] if mag_ang and len(mag_ang) > ang_idx else 0.0
 
         return v_row, i_row
 

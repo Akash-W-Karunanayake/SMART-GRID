@@ -42,14 +42,14 @@ DYN_STEPSIZE_S     = CYCLE_DURATION_S   # 0.02 s
 # Dataset size targets
 # ---------------------------------------------------------------------------
 TARGET_SAMPLES = {
-    "normal": 4000,
-    "LG":     3000,
-    "LL":     2000,
-    "LLG":    2000,
-    "LLL":    1500,
-    "HIF":    2500,
+    "normal": 8000,
+    "LG":     7000,
+    "LL":     5000,
+    "LLG":    5000,
+    "LLL":    5000,
+    "HIF":   10000,
 }
-TOTAL_TARGET = sum(TARGET_SAMPLES.values())   # ~15,000
+TOTAL_TARGET = sum(TARGET_SAMPLES.values())   # 40,000
 
 # ---------------------------------------------------------------------------
 # Fault parameters
