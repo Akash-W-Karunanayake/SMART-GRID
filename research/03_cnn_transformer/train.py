@@ -69,14 +69,24 @@ class FocalLoss(nn.Module):
         return ((1 - pt) ** self.gamma * ce).mean()
 
 
-def make_loss_fns(class_weights_dict: dict, device: torch.device):
-    """Build loss functions with Focal Loss for type head."""
+def make_loss_fns(class_weights_dict: dict, device: torch.device,
+                  det_labels: torch.Tensor = None):
+    """Build loss functions with Focal Loss for type head and weighted CE for detection."""
     # Type head: focal loss with class weights
     w = torch.ones(N_CLASSES_TYPE, dtype=torch.float32)
     for cls, wt in class_weights_dict.items():
         if cls < N_CLASSES_TYPE:
             w[cls] = wt
-    ce_det  = nn.CrossEntropyLoss()
+
+    # Detection head: inverse-frequency weighting (dataset is ~90% fault, ~10% normal)
+    if det_labels is not None:
+        det_counts = torch.bincount(det_labels, minlength=N_CLASSES_DETECTION).float()
+        det_total = det_counts.sum()
+        det_w = det_total / (N_CLASSES_DETECTION * det_counts.clamp(min=1))
+        ce_det = nn.CrossEntropyLoss(weight=det_w.to(device))
+    else:
+        ce_det = nn.CrossEntropyLoss()
+
     fl_type = FocalLoss(gamma=2.0, weight=w.to(device))
     ce_ph   = nn.CrossEntropyLoss()
     ce_loc  = nn.CrossEntropyLoss()
@@ -171,7 +181,7 @@ def main():
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=WEIGHT_DECAY)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=5, factor=0.5)
-    loss_fns  = make_loss_fns(class_weights, device)
+    loss_fns  = make_loss_fns(class_weights, device, det_labels=train_ds.y_det)
 
     CKPT_DIR.mkdir(parents=True, exist_ok=True)
     best_val_loss = float("inf")

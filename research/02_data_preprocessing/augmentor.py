@@ -85,6 +85,7 @@ def augment_dataset(voltage_seqs: list, current_seqs: list,
         class_indices[cls] = np.where(labels_type == cls)[0]
 
     aug_v, aug_c, aug_labels = list(voltage_seqs), list(current_seqs), list(labels_type)
+    aug_src_indices = []  # track which original index each augmented sample came from
 
     for cls, target in target_counts.items():
         if cls not in class_counts:
@@ -103,12 +104,14 @@ def augment_dataset(voltage_seqs: list, current_seqs: list,
             aug_v.append(v_aug)
             aug_c.append(c_aug)
             aug_labels.append(cls)
+            aug_src_indices.append(src_idx)
 
     aug_labels = np.array(aug_labels, dtype=labels_type.dtype)
+    aug_src_indices = np.array(aug_src_indices, dtype=np.int64)
     new_counts = dict(zip(*np.unique(aug_labels, return_counts=True)))
     logger.info(f"Class distribution after augmentation: {new_counts}")
 
-    return aug_v, aug_c, aug_labels
+    return aug_v, aug_c, aug_labels, aug_src_indices
 
 
 def _add_gaussian_noise(v: np.ndarray, c: np.ndarray,

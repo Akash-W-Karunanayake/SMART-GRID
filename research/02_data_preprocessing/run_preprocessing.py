@@ -85,26 +85,17 @@ def main():
     idx_train, idx_val, idx_test = split_indices(N, samples["label_type"])
 
     # ------------------------------------------------------------------
-    # Step 4: Fit normalizer on training set only
-    # ------------------------------------------------------------------
-    logger.info("Step 4: Fitting normalizer on training set...")
-    v_train = [samples["voltage_seqs"][i] for i in idx_train]
-    i_train = [samples["current_seqs"][i]  for i in idx_train]
-    normalizer = SequenceNormalizer().fit(v_train, i_train)
-    normalizer.save(NORM_PATH)
-
-    # ------------------------------------------------------------------
-    # Step 5: SMOTE on training set (HIF oversampling)
+    # Step 4: Augment RAW training data (before normalization)
     # ------------------------------------------------------------------
     if not args.skip_smote and len(idx_train) > 10:
-        logger.info("Step 5: Physics-aware augmentation for minority classes...")
+        logger.info("Step 4: Physics-aware augmentation on raw training data...")
 
-        train_v = [normalizer.transform_v(samples["voltage_seqs"][i]) for i in idx_train]
-        train_i = [normalizer.transform_i(samples["current_seqs"][i])  for i in idx_train]
+        train_v = [samples["voltage_seqs"][i] for i in idx_train]
+        train_i = [samples["current_seqs"][i]  for i in idx_train]
         y_type  = samples["label_type"][idx_train]
 
-        # Use physics-aware augmentation (noise, scaling, phase rotation, dropout)
-        aug_v, aug_c, aug_labels = augment_dataset(
+        # Augment raw (unnormalized) data so transforms are physically meaningful
+        aug_v, aug_c, aug_labels, src_indices = augment_dataset(
             train_v, train_i, y_type, random_state=42
         )
 
@@ -112,21 +103,38 @@ def main():
         n_new  = len(aug_labels) - n_orig
         logger.info(f"  Added {n_new} synthetic samples via physics-aware augmentation")
 
-        # Build augmented label arrays for auxiliary tasks
-        def _extend_labels(orig_arr, label_val, n):
-            return np.concatenate([orig_arr, np.full(n, label_val, dtype=np.int64)])
-
-        l_det_aug   = _extend_labels(samples["label_detection"][idx_train], 1, n_new)
+        # Copy ALL labels from source samples (not hardcoded values)
+        l_det_aug = np.concatenate([
+            samples["label_detection"][idx_train],
+            samples["label_detection"][idx_train[src_indices]]
+        ])
         l_type_aug  = aug_labels
-        l_phase_aug = _extend_labels(samples["label_phase"][idx_train], 0, n_new)
-        l_loc_aug   = _extend_labels(samples["label_location"][idx_train], -1, n_new)
+        l_phase_aug = np.concatenate([
+            samples["label_phase"][idx_train],
+            samples["label_phase"][idx_train[src_indices]]
+        ])
+        l_loc_aug = np.concatenate([
+            samples["label_location"][idx_train],
+            samples["label_location"][idx_train[src_indices]]
+        ])
 
-        # Save augmented training split
+        # ------------------------------------------------------------------
+        # Step 5: Fit normalizer on augmented training set
+        # ------------------------------------------------------------------
+        logger.info("Step 5: Fitting normalizer on augmented training set...")
+        normalizer = SequenceNormalizer().fit(aug_v, aug_c)
+        normalizer.save(NORM_PATH)
+
+        # Normalize augmented training data
+        aug_v_norm = [normalizer.transform_v(v) for v in aug_v]
+        aug_c_norm = [normalizer.transform_i(c) for c in aug_c]
+
+        # Save augmented + normalized training split
         (PROC_DIR / "train").mkdir(parents=True, exist_ok=True)
         np.savez_compressed(
             PROC_DIR / "train" / "train.npz",
-            voltage_seq     = np.stack(aug_v, axis=0),
-            current_seq     = np.stack(aug_c, axis=0),
+            voltage_seq     = np.stack(aug_v_norm, axis=0),
+            current_seq     = np.stack(aug_c_norm, axis=0),
             label_detection = l_det_aug,
             label_type      = l_type_aug,
             label_phase     = l_phase_aug,
@@ -134,6 +142,12 @@ def main():
         )
         logger.info(f"  Augmented training set saved ({len(aug_labels)} samples)")
     else:
+        logger.info("Step 4: Fitting normalizer on training set...")
+        v_train = [samples["voltage_seqs"][i] for i in idx_train]
+        i_train = [samples["current_seqs"][i]  for i in idx_train]
+        normalizer = SequenceNormalizer().fit(v_train, i_train)
+        normalizer.save(NORM_PATH)
+
         logger.info("Step 5: Saving training split without augmentation...")
         save_numpy_split(idx_train, samples, normalizer,
                          PROC_DIR / "train", "train")

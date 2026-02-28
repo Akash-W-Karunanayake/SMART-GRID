@@ -49,6 +49,7 @@ class _DenseLayer(nn.Module):
         if self.training and self.survival_prob < 1.0:
             if torch.rand(1).item() > self.survival_prob:
                 return torch.cat([x, torch.zeros_like(out)], dim=1)
+            out = out / self.survival_prob  # scale to compensate for expected dropout
         return torch.cat([x, out], dim=1)
 
 
@@ -168,19 +169,20 @@ class DenseNet1D(nn.Module):
 
         Returns
         -------
-        f_early : [B, f_early_dim]
-        f_mid   : [B, f_mid_dim]
-        f_deep  : [B, f_deep_dim]
+        f_early       : [B, f_early_dim]       — pooled (for hybrid fusion)
+        f_mid         : [B, f_mid_dim]          — pooled (for hybrid fusion)
+        f_deep        : [B, f_deep_dim, T']     — full temporal map (for Transformer)
+        f_deep_pooled : [B, f_deep_dim]         — pooled (for hybrid fusion)
         """
         x = F.relu(self.bn0(self.conv0(x)))
 
-        # Block 1 → early tap
+        # Block 1 → early tap (pooled)
         x = self.block1(x)
         f_early = F.adaptive_avg_pool1d(x, 1).squeeze(-1)
 
         x = self.trans1(x)
 
-        # Block 2 → mid tap
+        # Block 2 → mid tap (pooled)
         x = self.block2(x)
         f_mid = F.adaptive_avg_pool1d(x, 1).squeeze(-1)
 
@@ -190,12 +192,13 @@ class DenseNet1D(nn.Module):
         x = self.block3(x)
         x = self.trans3(x)
 
-        # Block 4 → deep tap
+        # Block 4 → deep tap (keep full temporal map)
         x = self.block4(x)
         x = F.relu(self.final_bn(x))
-        f_deep = F.adaptive_avg_pool1d(x, 1).squeeze(-1)
+        f_deep = x                                          # [B, ch4, T']
+        f_deep_pooled = F.adaptive_avg_pool1d(x, 1).squeeze(-1)  # [B, ch4]
 
-        return f_early, f_mid, f_deep
+        return f_early, f_mid, f_deep, f_deep_pooled
 
 
 # ---------------------------------------------------------------------------
@@ -294,22 +297,23 @@ class CNNTransformerModel(nn.Module):
         """
         # DenseNet expects [B, C, T]
         x_perm = x.permute(0, 2, 1)  # [B, F, T]
-        f_early, f_mid, f_deep = self.densenet(x_perm)
+        f_early, f_mid, f_deep, f_deep_pooled = self.densenet(x_perm)
 
-        # Transformer on deep features
-        # f_deep is [B, f_deep_dim] — we expand to sequence for Transformer
-        h = self.proj_deep(f_deep).unsqueeze(1)  # [B, 1, D_MODEL]
+        # Transformer on deep temporal features
+        # f_deep: [B, ch4, T'] — full temporal map
+        f_deep_seq = f_deep.permute(0, 2, 1)    # [B, T', ch4]
+        h = self.proj_deep(f_deep_seq)           # [B, T', D_MODEL]
         h = self.pos_enc(h)
-        h = self.transformer(h)      # [B, 1, D_MODEL]
-        feat = h.squeeze(1)           # [B, D_MODEL]
+        h = self.transformer(h)                  # [B, T', D_MODEL]
+        feat = h.mean(dim=1)                     # [B, D_MODEL] — GAP after Transformer
 
         return {
             "detection": self.head_detection(feat),
             "type":      self.head_type(feat),
             "phase":     self.head_phase(feat),
             "location":  self.head_location(feat),
-            "feat":      feat,         # h_temporal [B, D_MODEL] for hybrid fusion
-            "f_early":   f_early,      # [B, 208] multi-scale tap
-            "f_mid":     f_mid,        # [B, 392] multi-scale tap
-            "f_deep":    f_deep,       # [B, 770] multi-scale tap
+            "feat":      feat,              # h_temporal [B, D_MODEL] for hybrid fusion
+            "f_early":   f_early,           # [B, 208] multi-scale tap (pooled)
+            "f_mid":     f_mid,             # [B, 392] multi-scale tap (pooled)
+            "f_deep":    f_deep_pooled,     # [B, 770] multi-scale tap (pooled)
         }
