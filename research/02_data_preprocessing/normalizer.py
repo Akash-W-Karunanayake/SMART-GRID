@@ -23,8 +23,8 @@ class SequenceNormalizer:
     Voltage arrays  : [T, N_buses, 6]     — [mag, ang] × 3 phases
     Current arrays  : [T, N_branches, 6]  — [mag, ang] × 3 phases
 
-    Angle features (columns 1, 3, 5) are left as-is (pass-through)
-    because angles are already bounded — only magnitudes are Z-scored.
+    All features (magnitudes and angles) are Z-score normalized to
+    ensure consistent scale across channels for neural network training.
     """
 
     def __init__(self):
@@ -47,18 +47,12 @@ class SequenceNormalizer:
         V = np.concatenate(v_list, axis=0)   # [S*T, N_buses, 6]
         I = np.concatenate(i_list, axis=0)   # [S*T, N_branches, 6]
 
-        # Voltage normalization (skip angle columns)
+        # Z-score all columns (magnitudes AND angles)
         self.v_mean = V.mean(axis=0)         # [N_buses, 6]
         self.v_std  = V.std(axis=0) + EPS
-        angle_cols = [1, 3, 5]
-        self.v_mean[:, angle_cols] = 0.0
-        self.v_std[:, angle_cols]  = 1.0
 
-        # Current normalization (skip angle columns)
         self.i_mean = I.mean(axis=0)         # [N_branches, 6]
         self.i_std  = I.std(axis=0) + EPS
-        self.i_mean[:, angle_cols] = 0.0
-        self.i_std[:, angle_cols]  = 1.0
 
         self._fitted = True
         logger.info(f"Normalizer fitted: V mean range [{self.v_mean.min():.4f}, "
