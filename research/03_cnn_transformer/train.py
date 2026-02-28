@@ -1,10 +1,11 @@
 """
-Training loop for CNN-Transformer model (Stage 03).
-Supports multi-task loss, weighted CE for class imbalance, and early stopping.
+Training loop for CNN-Transformer model (Stage 03) — Phase 1 pre-training.
+Trains on detection + type tasks only (phase/location disabled via config).
+Supports focal loss, weighted CE, and early stopping.
 
 Usage:
     python research/03_cnn_transformer/train.py
-    python research/03_cnn_transformer/train.py --epochs 5
+    python research/03_cnn_transformer/train.py --epochs 20
 
 IT22577924 — Karunanayake K.P.A.W.
 """
@@ -17,6 +18,7 @@ from pathlib import Path
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -37,8 +39,8 @@ logger = logging.getLogger("cnn_transformer.train")
 class FaultDataset(Dataset):
     def __init__(self, npz_path: Path):
         d = np.load(npz_path, allow_pickle=True)
-        # Use current_seq for temporal model: [N, T, N_branches*3] → flatten branches
-        I = d["current_seq"]   # [N, T, N_branches, 3]
+        # current_seq: [N, T, N_branches, 6] (mag+ang per phase)
+        I = d["current_seq"]
         N, T, B, F = I.shape
         self.X = torch.tensor(I.reshape(N, T, B * F), dtype=torch.float32)
         self.y_det  = torch.tensor(d["label_detection"], dtype=torch.long)
@@ -54,35 +56,43 @@ class FaultDataset(Dataset):
         return self.X[i], self.y_det[i], self.y_type[i], self.y_ph[i], self.y_loc[i]
 
 
-def make_loss_fns(class_weights_dict: dict, device: torch.device):
-    """Build weighted CE loss functions."""
-    def _make_ce(n_classes, label_int=None):
-        if label_int is not None and label_int in class_weights_dict:
-            pass  # only type head uses class weights
-        return nn.CrossEntropyLoss()
+class FocalLoss(nn.Module):
+    """Focal Loss for handling class imbalance."""
+    def __init__(self, gamma: float = 2.0, weight: torch.Tensor = None):
+        super().__init__()
+        self.gamma = gamma
+        self.weight = weight
 
-    # Type head: use class weights
-    max_cls = max(class_weights_dict.keys(), default=5)
+    def forward(self, logits, targets):
+        ce = F.cross_entropy(logits, targets, weight=self.weight, reduction='none')
+        pt = torch.exp(-ce)
+        return ((1 - pt) ** self.gamma * ce).mean()
+
+
+def make_loss_fns(class_weights_dict: dict, device: torch.device):
+    """Build loss functions with Focal Loss for type head."""
+    # Type head: focal loss with class weights
     w = torch.ones(N_CLASSES_TYPE, dtype=torch.float32)
     for cls, wt in class_weights_dict.items():
         if cls < N_CLASSES_TYPE:
             w[cls] = wt
-    ce_type = nn.CrossEntropyLoss(weight=w.to(device))
     ce_det  = nn.CrossEntropyLoss()
+    fl_type = FocalLoss(gamma=2.0, weight=w.to(device))
     ce_ph   = nn.CrossEntropyLoss()
     ce_loc  = nn.CrossEntropyLoss()
-    return ce_det, ce_type, ce_ph, ce_loc
+    return ce_det, fl_type, ce_ph, ce_loc
 
 
 def compute_loss(outputs, labels, loss_fns):
-    ce_det, ce_type, ce_ph, ce_loc = loss_fns
+    ce_det, fl_type, ce_ph, ce_loc = loss_fns
     y_det, y_type, y_ph, y_loc = labels
-    loss = (
-        LAMBDA_DETECT   * ce_det(outputs["detection"], y_det)  +
-        LAMBDA_TYPE     * ce_type(outputs["type"],     y_type) +
-        LAMBDA_PHASE    * ce_ph(outputs["phase"],      y_ph)   +
-        LAMBDA_LOCATION * ce_loc(outputs["location"],  y_loc)
-    )
+    loss = LAMBDA_DETECT * ce_det(outputs["detection"], y_det)
+    if LAMBDA_TYPE > 0:
+        loss = loss + LAMBDA_TYPE * fl_type(outputs["type"], y_type)
+    if LAMBDA_PHASE > 0:
+        loss = loss + LAMBDA_PHASE * ce_ph(outputs["phase"], y_ph)
+    if LAMBDA_LOCATION > 0:
+        loss = loss + LAMBDA_LOCATION * ce_loc(outputs["location"], y_loc)
     return loss
 
 
@@ -143,7 +153,7 @@ def main():
     val_ds   = FaultDataset(VAL_NPZ)
 
     n_buses  = max(train_ds.n_buses, val_ds.n_buses)
-    in_feat  = train_ds.X.shape[-1]    # N_branches * 3
+    in_feat  = train_ds.X.shape[-1]    # N_branches * 6
 
     train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True,  num_workers=0)
     val_loader   = DataLoader(val_ds,   batch_size=args.batch_size, shuffle=False, num_workers=0)
