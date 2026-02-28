@@ -1,109 +1,170 @@
 """
-Augmentor — SMOTE oversampling for HIF class imbalance.
-Operates in flattened feature space; reconstructs sequence shape after synthesis.
+Physics-Aware Augmentation for fault signal data.
+Replaces SMOTE (which creates implausible signals via linear interpolation
+of flattened time series) with physically motivated transforms.
+
+Augmentation methods:
+  1. Gaussian noise injection (SNR 20-40 dB)
+  2. Random magnitude scaling (±5% on pre-fault steady-state)
+  3. Random phase rotation (multiply phasors by e^{jθ}, θ ~ U(-5°, 5°))
+  4. Random channel dropout (zero 1-2 measurement channels, 10% probability)
+
 IT22577924 — Karunanayake K.P.A.W.
 """
 import logging
 import numpy as np
-from imblearn.over_sampling import SMOTE
-from sklearn.preprocessing import LabelEncoder
 
 logger = logging.getLogger(__name__)
 
 
-def smote_oversample(features: np.ndarray, labels: np.ndarray,
-                     target_labels: list = None,
-                     random_state: int = 42) -> tuple:
+def augment_sample(voltage_seq: np.ndarray, current_seq: np.ndarray,
+                   rng: np.random.Generator = None) -> tuple:
     """
-    Apply SMOTE to balance one or more minority classes against the majority.
+    Apply a random subset of physics-aware augmentations to a single sample.
 
     Parameters
     ----------
-    features      : np.ndarray [N, D]  — flattened feature vectors
-    labels        : np.ndarray [N]     — class labels (label_type)
-    target_labels : list[int]          — minority classes to oversample
-                                         (default [5] = HIF; pass [4, 5] for LLL+HIF)
+    voltage_seq : np.ndarray [T, N_buses, 6]    — [mag, ang] × 3 phases
+    current_seq : np.ndarray [T, N_branches, 6] — [mag, ang] × 3 phases
+
+    Returns
+    -------
+    (voltage_aug, current_aug) — augmented copies
+    """
+    if rng is None:
+        rng = np.random.default_rng()
+
+    v = voltage_seq.copy()
+    c = current_seq.copy()
+
+    # Apply each augmentation with independent probability
+    if rng.random() < 0.7:
+        v, c = _add_gaussian_noise(v, c, rng)
+    if rng.random() < 0.5:
+        v, c = _magnitude_scaling(v, c, rng)
+    if rng.random() < 0.4:
+        v, c = _phase_rotation(v, c, rng)
+    if rng.random() < 0.1:
+        v, c = _channel_dropout(v, c, rng)
+
+    return v, c
+
+
+def augment_dataset(voltage_seqs: list, current_seqs: list,
+                    labels_type: np.ndarray,
+                    target_counts: dict = None,
+                    random_state: int = 42) -> tuple:
+    """
+    Augment minority classes to reach target counts using physics-aware transforms.
+
+    Parameters
+    ----------
+    voltage_seqs  : list of [T, N_buses, 6]
+    current_seqs  : list of [T, N_branches, 6]
+    labels_type   : np.ndarray [N] — class labels
+    target_counts : dict {class_label: target_count}
+                    If None, balances all classes to majority count.
     random_state  : int
 
     Returns
     -------
-    (features_resampled [N', D], labels_resampled [N'])
+    (aug_voltage_seqs, aug_current_seqs, aug_labels)
     """
-    if target_labels is None:
-        target_labels = [5]
+    rng = np.random.default_rng(random_state)
 
-    class_counts = dict(zip(*np.unique(labels, return_counts=True)))
-    logger.info(f"Class distribution before SMOTE: {class_counts}")
+    class_counts = dict(zip(*np.unique(labels_type, return_counts=True)))
+    logger.info(f"Class distribution before augmentation: {class_counts}")
 
-    # Determine target count: match the majority class
-    majority_count = max(class_counts.values())
-    sampling_strategy = {
-        lbl: majority_count
-        for lbl in target_labels
-        if lbl in class_counts and class_counts[lbl] < majority_count
-    }
+    if target_counts is None:
+        majority_count = max(class_counts.values())
+        target_counts = {cls: majority_count for cls in class_counts}
 
-    if not sampling_strategy:
-        logger.info("No minority classes need SMOTE; returning original data")
-        return features, labels
+    # Group indices by class
+    class_indices = {}
+    for cls in class_counts:
+        class_indices[cls] = np.where(labels_type == cls)[0]
 
-    # k_neighbors must be < the smallest minority class count
-    min_target_count = min(class_counts[lbl] for lbl in sampling_strategy)
-    k_neighbors = min(5, min_target_count - 1)
+    aug_v, aug_c, aug_labels = list(voltage_seqs), list(current_seqs), list(labels_type)
 
-    smote = SMOTE(
-        sampling_strategy=sampling_strategy,
-        k_neighbors=k_neighbors,
-        random_state=random_state,
-    )
+    for cls, target in target_counts.items():
+        if cls not in class_counts:
+            continue
+        n_existing = class_counts[cls]
+        n_needed = target - n_existing
+        if n_needed <= 0:
+            continue
 
-    try:
-        X_res, y_res = smote.fit_resample(features, labels)
-        new_counts = dict(zip(*np.unique(y_res, return_counts=True)))
-        logger.info(f"Class distribution after SMOTE: {new_counts}")
-        return X_res, y_res
-    except Exception as e:
-        logger.warning(f"SMOTE failed ({e}); returning original data unchanged")
-        return features, labels
+        indices = class_indices[cls]
+        for _ in range(n_needed):
+            # Pick a random existing sample from this class
+            src_idx = rng.choice(indices)
+            v_aug, c_aug = augment_sample(
+                voltage_seqs[src_idx], current_seqs[src_idx], rng)
+            aug_v.append(v_aug)
+            aug_c.append(c_aug)
+            aug_labels.append(cls)
+
+    aug_labels = np.array(aug_labels, dtype=labels_type.dtype)
+    new_counts = dict(zip(*np.unique(aug_labels, return_counts=True)))
+    logger.info(f"Class distribution after augmentation: {new_counts}")
+
+    return aug_v, aug_c, aug_labels
 
 
-def flatten_sequences(voltage_seqs: list, current_seqs: list) -> np.ndarray:
+def _add_gaussian_noise(v: np.ndarray, c: np.ndarray,
+                        rng: np.random.Generator) -> tuple:
+    """Add Gaussian noise at SNR between 20-40 dB."""
+    snr_db = rng.uniform(20.0, 40.0)
+    snr_linear = 10 ** (snr_db / 10.0)
+
+    for arr in [v, c]:
+        # Only add noise to magnitude columns (0, 2, 4)
+        for col in [0, 2, 4]:
+            signal = arr[:, :, col]
+            signal_power = np.mean(signal ** 2) + 1e-10
+            noise_power = signal_power / snr_linear
+            noise = rng.normal(0, np.sqrt(noise_power), signal.shape)
+            arr[:, :, col] = signal + noise.astype(arr.dtype)
+
+    return v, c
+
+
+def _magnitude_scaling(v: np.ndarray, c: np.ndarray,
+                       rng: np.random.Generator) -> tuple:
+    """Random magnitude scaling ±5% on all magnitude columns."""
+    scale = rng.uniform(0.95, 1.05)
+    for arr in [v, c]:
+        for col in [0, 2, 4]:
+            arr[:, :, col] *= scale
+    return v, c
+
+
+def _phase_rotation(v: np.ndarray, c: np.ndarray,
+                    rng: np.random.Generator) -> tuple:
     """
-    Flatten list of sequence arrays into 2D feature matrix.
-
-    Parameters
-    ----------
-    voltage_seqs : list of [T, N_buses, 6]
-    current_seqs : list of [T, N_branches, 3]
-
-    Returns
-    -------
-    np.ndarray [N_samples, T*(N_buses*6 + N_branches*3)]
+    Random phase rotation: add uniform offset θ ~ U(-5°, 5°) to all angle
+    columns. This is equivalent to multiplying phasors by e^{jθ}.
     """
-    flat = []
-    for V, I in zip(voltage_seqs, current_seqs):
-        flat.append(np.concatenate([V.flatten(), I.flatten()]))
-    return np.stack(flat, axis=0)
+    theta_deg = rng.uniform(-5.0, 5.0)
+    for arr in [v, c]:
+        for col in [1, 3, 5]:  # angle columns
+            arr[:, :, col] += theta_deg
+    return v, c
 
 
-def unflatten_sequences(features: np.ndarray,
-                        T: int, N_buses: int, N_branches: int) -> tuple:
-    """
-    Reconstruct voltage_seqs and current_seqs from flattened feature matrix.
-
-    Returns
-    -------
-    (voltage_seqs: list[np.ndarray], current_seqs: list[np.ndarray])
-    """
-    v_size = T * N_buses * 6
-    voltage_seqs = []
-    current_seqs = []
-    for row in features:
-        V = row[:v_size].reshape(T, N_buses, 6)
-        I = row[v_size:].reshape(T, N_branches, 3)
-        voltage_seqs.append(V)
-        current_seqs.append(I)
-    return voltage_seqs, current_seqs
+def _channel_dropout(v: np.ndarray, c: np.ndarray,
+                     rng: np.random.Generator) -> tuple:
+    """Zero out 1-2 random measurement channels (both mag and angle)."""
+    n_drop = rng.choice([1, 2])
+    # Choose which array and which phase to drop
+    for _ in range(n_drop):
+        target = rng.choice([0, 1])  # 0=voltage, 1=current
+        phase = rng.integers(0, 3)    # which phase (0, 1, 2)
+        entity = rng.integers(0, v.shape[1] if target == 0 else c.shape[1])
+        arr = v if target == 0 else c
+        arr[:, entity, phase * 2] = 0.0      # mag
+        arr[:, entity, phase * 2 + 1] = 0.0  # ang
+    return v, c
 
 
 def compute_class_weights(labels: np.ndarray) -> dict:

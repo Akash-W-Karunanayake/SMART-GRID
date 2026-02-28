@@ -23,8 +23,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "01_dataset_generation"))
 
 from validate_physics import run_validation
 from normalizer import SequenceNormalizer
-from augmentor import (smote_oversample, flatten_sequences,
-                       unflatten_sequences, compute_class_weights)
+from augmentor import augment_dataset, compute_class_weights
 from dataset_builder import (load_all_samples, split_indices,
                               save_numpy_split, save_pyg_split)
 
@@ -98,48 +97,44 @@ def main():
     # Step 5: SMOTE on training set (HIF oversampling)
     # ------------------------------------------------------------------
     if not args.skip_smote and len(idx_train) > 10:
-        logger.info("Step 5: SMOTE oversampling for LLL (class 4) and HIF (class 5)...")
-        T         = samples["voltage_seqs"][0].shape[0]
-        N_buses   = samples["voltage_seqs"][0].shape[1]
-        N_branches = samples["current_seqs"][0].shape[1]
+        logger.info("Step 5: Physics-aware augmentation for minority classes...")
 
         train_v = [normalizer.transform_v(samples["voltage_seqs"][i]) for i in idx_train]
         train_i = [normalizer.transform_i(samples["current_seqs"][i])  for i in idx_train]
-        X_flat  = flatten_sequences(train_v, train_i)
         y_type  = samples["label_type"][idx_train]
 
-        X_aug, y_aug = smote_oversample(X_flat, y_type, target_labels=[4, 5])
+        # Use physics-aware augmentation (noise, scaling, phase rotation, dropout)
+        aug_v, aug_c, aug_labels = augment_dataset(
+            train_v, train_i, y_type, random_state=42
+        )
 
-        v_aug, i_aug = unflatten_sequences(X_aug, T, N_buses, N_branches)
-
-        # Rebuild augmented training samples (use original labels for other tasks)
         n_orig = len(idx_train)
-        n_new  = len(X_aug) - n_orig
-        logger.info(f"  Added {n_new} synthetic samples via SMOTE (LLL + HIF)")
+        n_new  = len(aug_labels) - n_orig
+        logger.info(f"  Added {n_new} synthetic samples via physics-aware augmentation")
 
-        # Build augmented label arrays — y_aug carries correct type labels for synthetics
+        # Build augmented label arrays for auxiliary tasks
         def _extend_labels(orig_arr, label_val, n):
             return np.concatenate([orig_arr, np.full(n, label_val, dtype=np.int64)])
 
         l_det_aug   = _extend_labels(samples["label_detection"][idx_train], 1, n_new)
-        l_type_aug  = np.concatenate([y_type, y_aug[n_orig:].astype(np.int64)])
+        l_type_aug  = aug_labels
         l_phase_aug = _extend_labels(samples["label_phase"][idx_train], 0, n_new)
         l_loc_aug   = _extend_labels(samples["label_location"][idx_train], -1, n_new)
 
         # Save augmented training split
-        PROC_DIR.mkdir(parents=True, exist_ok=True)
+        (PROC_DIR / "train").mkdir(parents=True, exist_ok=True)
         np.savez_compressed(
             PROC_DIR / "train" / "train.npz",
-            voltage_seq     = np.stack(v_aug, axis=0),
-            current_seq     = np.stack(i_aug, axis=0),
+            voltage_seq     = np.stack(aug_v, axis=0),
+            current_seq     = np.stack(aug_c, axis=0),
             label_detection = l_det_aug,
             label_type      = l_type_aug,
             label_phase     = l_phase_aug,
             label_location  = l_loc_aug,
         )
-        logger.info(f"  Augmented training set saved ({len(X_aug)} samples)")
+        logger.info(f"  Augmented training set saved ({len(aug_labels)} samples)")
     else:
-        logger.info("Step 5: Saving training split without SMOTE...")
+        logger.info("Step 5: Saving training split without augmentation...")
         save_numpy_split(idx_train, samples, normalizer,
                          PROC_DIR / "train", "train")
 

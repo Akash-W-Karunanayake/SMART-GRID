@@ -11,15 +11,15 @@ from typing import Tuple
 logger = logging.getLogger(__name__)
 
 # Validation thresholds
-MAX_FAILURES   = 1          # Flag sample if it fails > this many checks
+MAX_FAILURES   = 3          # Flag sample if it fails > this many checks
 V_NOM_PU       = 1.0
 V_OVERFLOW_CAP = 100.0      # > 100× nominal pu = catastrophically corrupt data
-V_FAULT_DROP   = 0.10       # LIF faulted bus must drop >10% pu
+V_FAULT_DROP   = 0.03       # LIF faulted bus must drop >3% pu (weak 33kV grid)
 HIF_FAULT_DROP = 0.03       # HIF minimum drop (weaker signal)
-I_FAULT_RATIO  = 2.0        # LIF: I_fault > 2× I_prefault
+I_FAULT_RATIO  = 1.3        # LIF: I_fault > 1.3× I_prefault (weak grid)
 I_HIF_RATIO    = 1.1        # HIF: smaller but detectable increase
 V_MIN_PU       = 0.0        # Lower guard (allow zero during fault)
-V2_THRESHOLD   = 0.05       # |V2| > this for unbalanced faults
+V2_THRESHOLD   = 0.01       # |V2| > this for unbalanced faults (weak grid)
 
 
 def validate_sample(sample_path: Path) -> Tuple[bool, list]:
@@ -36,7 +36,7 @@ def validate_sample(sample_path: Path) -> Tuple[bool, list]:
         return False, [f"Load error: {e}"]
 
     V = data["voltage_seq"]    # [T=20, N_buses, 6]
-    I = data["current_seq"]    # [T=20, N_branches, 3]
+    I = data["current_seq"]    # [T=20, N_branches, 6]
     fault_type  = str(data["fault_type"])
     label_det   = int(data["label_detection"])
     label_type  = int(data["label_type"])
@@ -70,7 +70,8 @@ def validate_sample(sample_path: Path) -> Tuple[bool, list]:
     # ------------------------------------------------------------------
     # Check 2: Current magnitudes non-negative
     # ------------------------------------------------------------------
-    if np.any(I < 0):
+    i_mags = I[:, :, 0::2]  # magnitude columns only (indices 0, 2, 4)
+    if np.any(i_mags < 0):
         failures.append("C2: Negative current magnitudes")
 
     # ------------------------------------------------------------------

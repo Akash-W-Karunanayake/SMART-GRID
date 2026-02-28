@@ -1,6 +1,9 @@
 """
 Normalizer — Z-score normalization for voltage and current sequences.
 Fit statistics on training set only; applied to val/test consistently.
+
+Updated for 6-feature currents [Ia_mag, Ia_ang, Ib_mag, Ib_ang, Ic_mag, Ic_ang].
+
 IT22577924 — Karunanayake K.P.A.W.
 """
 import pickle
@@ -17,17 +20,17 @@ class SequenceNormalizer:
     """
     Per-feature Z-score normalizer for [T, N, F] sequence arrays.
 
-    Voltage arrays  : [T, N_buses, 6]     — fit per bus per phase-feature
-    Current arrays  : [T, N_branches, 3]  — fit per branch per phase
+    Voltage arrays  : [T, N_buses, 6]     — [mag, ang] × 3 phases
+    Current arrays  : [T, N_branches, 6]  — [mag, ang] × 3 phases
 
-    Angle features (columns 1, 3, 5 of voltage) are left in degrees as-is
+    Angle features (columns 1, 3, 5) are left as-is (pass-through)
     because angles are already bounded — only magnitudes are Z-scored.
     """
 
     def __init__(self):
         self.v_mean: np.ndarray = None   # [N_buses, 6]
         self.v_std:  np.ndarray = None
-        self.i_mean: np.ndarray = None   # [N_branches, 3]
+        self.i_mean: np.ndarray = None   # [N_branches, 6]
         self.i_std:  np.ndarray = None
         self._fitted = False
 
@@ -38,23 +41,24 @@ class SequenceNormalizer:
         Parameters
         ----------
         v_list : list of np.ndarray [T, N_buses, 6]
-        i_list : list of np.ndarray [T, N_branches, 3]
+        i_list : list of np.ndarray [T, N_branches, 6]
         """
         # Stack along sample and time axes → [S*T, N, F]
         V = np.concatenate(v_list, axis=0)   # [S*T, N_buses, 6]
-        I = np.concatenate(i_list, axis=0)   # [S*T, N_branches, 3]
+        I = np.concatenate(i_list, axis=0)   # [S*T, N_branches, 6]
 
-        # Magnitude-only normalization for voltage (skip angle columns)
+        # Voltage normalization (skip angle columns)
         self.v_mean = V.mean(axis=0)         # [N_buses, 6]
         self.v_std  = V.std(axis=0) + EPS
-
-        # Angle columns: keep pass-through (std≈1, mean≈0 after setting)
         angle_cols = [1, 3, 5]
         self.v_mean[:, angle_cols] = 0.0
         self.v_std[:, angle_cols]  = 1.0
 
-        self.i_mean = I.mean(axis=0)         # [N_branches, 3]
+        # Current normalization (skip angle columns)
+        self.i_mean = I.mean(axis=0)         # [N_branches, 6]
         self.i_std  = I.std(axis=0) + EPS
+        self.i_mean[:, angle_cols] = 0.0
+        self.i_std[:, angle_cols]  = 1.0
 
         self._fitted = True
         logger.info(f"Normalizer fitted: V mean range [{self.v_mean.min():.4f}, "
@@ -68,7 +72,7 @@ class SequenceNormalizer:
         return (V - self.v_mean) / self.v_std
 
     def transform_i(self, I: np.ndarray) -> np.ndarray:
-        """Normalize current array [T, N_branches, 3]."""
+        """Normalize current array [T, N_branches, 6]."""
         self._check_fitted()
         return (I - self.i_mean) / self.i_std
 

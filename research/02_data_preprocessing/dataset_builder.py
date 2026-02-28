@@ -4,6 +4,8 @@ Produces:
   - Plain NumPy bundles for CNN-Transformer (temporal branch)
   - PyG Data objects for R-GNN (spatial branch)
 
+Updated: current_seq shape is now [T, N_branches, 6] (mag+ang per phase).
+
 IT22577924 — Karunanayake K.P.A.W.
 """
 import logging
