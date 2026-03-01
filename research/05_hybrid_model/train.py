@@ -25,8 +25,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 
-sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent.parent / "04_r_gnn"))
+sys.path.insert(0, str(Path(__file__).parent))
 
 from model import HybridModel, FocalLoss
 from config import (

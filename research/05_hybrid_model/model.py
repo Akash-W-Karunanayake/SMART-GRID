@@ -16,18 +16,27 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-# Import sub-models by full path to avoid module name collision
+# Import sub-models by full path to avoid module name collision.
+# Temporarily prepend each stage's dir so that *its* config.py is found.
 def _import_module(name: str, path: Path):
-    spec = importlib.util.spec_from_file_location(name, path)
-    mod  = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
+    stage_dir = str(path.parent)
+    # Save and remove any cached 'config' so the stage's own config.py is used
+    saved_config = sys.modules.pop("config", None)
+    sys.path.insert(0, stage_dir)
+    try:
+        spec = importlib.util.spec_from_file_location(name, path)
+        mod  = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+    finally:
+        sys.path.remove(stage_dir)
+        # Remove the stage's config from cache so it doesn't leak
+        sys.modules.pop("config", None)
+        if saved_config is not None:
+            sys.modules["config"] = saved_config
 
 _STAGE03 = Path(__file__).parent.parent / "03_cnn_transformer"
 _STAGE04 = Path(__file__).parent.parent / "04_r_gnn"
-
-sys.path.insert(0, str(_STAGE03))
-sys.path.insert(0, str(_STAGE04))
 
 _cnn_t_mod = _import_module("cnn_transformer_model", _STAGE03 / "model.py")
 _rgnn_mod  = _import_module("rgnn_model",            _STAGE04 / "model.py")
