@@ -80,15 +80,27 @@ class FocalLoss(nn.Module):
         return ((1 - pt) ** self.gamma * ce).mean()
 
 
-def make_loss_fns(class_weights_dict, device):
+def make_loss_fns(class_weights_dict, device, det_labels=None):
+    # Type head: focal loss with class weights (reduced gamma for near-balanced data)
     w = torch.ones(N_CLASSES_TYPE, dtype=torch.float32)
     for cls, wt in class_weights_dict.items():
         if cls < N_CLASSES_TYPE:
             w[cls] = wt
+
+    # Detection head: inverse-frequency weighting (dataset is ~86% fault, ~14% normal)
+    if det_labels is not None:
+        from config import N_CLASSES_DETECTION
+        det_counts = torch.bincount(det_labels, minlength=N_CLASSES_DETECTION).float()
+        det_total = det_counts.sum()
+        det_w = det_total / (N_CLASSES_DETECTION * det_counts.clamp(min=1))
+        ce_det = nn.CrossEntropyLoss(weight=det_w.to(device))
+    else:
+        ce_det = nn.CrossEntropyLoss()
+
     return (
-        nn.CrossEntropyLoss(),
-        FocalLoss(gamma=2.0, weight=w.to(device)),
-        FocalLoss(gamma=2.0),
+        ce_det,
+        FocalLoss(gamma=1.0, weight=w.to(device)),
+        FocalLoss(gamma=1.0),
         nn.CrossEntropyLoss(),
     )
 
@@ -213,12 +225,15 @@ def main():
         with open(WEIGHTS_PATH, "rb") as f:
             class_weights = pickle.load(f)
 
+    # Collect detection labels for inverse-frequency weighting
+    det_labels = torch.tensor([d.y_detection.item() for d in train_ds.data_list])
+
     model = RGNNModel(n_buses=n_buses).to(device)
     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     logger.info(f"R-GNN params: {n_params:,}")
 
     CKPT_DIR.mkdir(parents=True, exist_ok=True)
-    loss_fns = make_loss_fns(class_weights, device)
+    loss_fns = make_loss_fns(class_weights, device, det_labels=det_labels)
     history = []
 
     if args.phase == "2a":
@@ -244,8 +259,8 @@ def main():
         model.load_state_dict(ckpt["model_state"])
         logger.info("Loaded Phase 2a checkpoint for transfer learning")
 
-        # All tasks enabled
-        lambdas = (1.0, 1.0, 0.5, 1.5)
+        # All tasks enabled — location lambda reduced (80 classes → large CE, was dominating)
+        lambdas = (1.0, 1.0, 0.5, 0.3)
 
         # Step 1: Freeze GCN+GRU, train new heads (15 epochs)
         for p in model.gcn_layers.parameters():
@@ -268,16 +283,16 @@ def main():
             loss_fns, device, ei, ea, lambdas, 15, PATIENCE,
             CKPT_DIR / "best_model_2b_heads.pt", history)
 
-        # Step 2: Unfreeze all, fine-tune (10 epochs)
+        # Step 2: Unfreeze all, fine-tune (more epochs to converge)
         for p in model.parameters():
             p.requires_grad = True
         optimizer = torch.optim.Adam(model.parameters(), lr=PHASE2B_LR_FINETUNE, weight_decay=WEIGHT_DECAY)
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=5, factor=0.5)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=7, factor=0.5)
 
         logger.info("Phase 2b Step 2: Full fine-tuning...")
         best_val = _run_training_loop(
             model, train_loader, val_loader, optimizer, scheduler,
-            loss_fns, device, ei, ea, lambdas, 10, PATIENCE,
+            loss_fns, device, ei, ea, lambdas, 40, PATIENCE,
             CKPT_DIR / "best_model.pt", history)
         logger.info(f"Phase 2b complete. Best val_loss={best_val:.4f}")
 
