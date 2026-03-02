@@ -17,7 +17,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from config import CNN_T_DIM, RGNN_DIM, FUSED_DIM, FUSION_HEADS, FUSION_DROPOUT
+from config import (CNN_T_DIM, RGNN_DIM, FUSED_DIM, FUSION_HEADS,
+                    FUSION_DROPOUT, MULTISCALE_INTERMEDIATE)
 
 
 class CrossAttentionBlock(nn.Module):
@@ -98,17 +99,30 @@ class BidirectionalHierarchicalFusion(nn.Module):
             q_dim=RGNN_DIM, kv_dim=CNN_T_DIM,
             d_attn=d_attn, n_heads=FUSION_HEADS, dropout=FUSION_DROPOUT)
 
+        # Expand single temporal token → 8 learned tokens for S→T K/V
+        self.n_temporal_tokens = 8
+        self.temporal_expand = nn.Sequential(
+            nn.Linear(CNN_T_DIM, CNN_T_DIM * self.n_temporal_tokens),
+            nn.GELU(),
+        )
+
         # Gated combination
         self.gate_proj = nn.Linear(d_attn * 2, d_attn)
 
-        # Multi-scale fusion: combine F_early, F_mid, and gated output
+        # Multi-scale fusion: two-stage projection (792→492→192)
         ms_input_dim = f_early_dim + f_mid_dim + d_attn
-        self.multiscale_proj = nn.Linear(ms_input_dim, FUSED_DIM)
-        self.multiscale_ffn = nn.Sequential(
-            nn.Linear(FUSED_DIM, FUSED_DIM),
+        ms_inter = MULTISCALE_INTERMEDIATE  # 492
+        self.multiscale_proj = nn.Sequential(
+            nn.Linear(ms_input_dim, ms_inter),
             nn.GELU(),
             nn.Dropout(FUSION_DROPOUT),
-            nn.Linear(FUSED_DIM, FUSED_DIM),
+            nn.Linear(ms_inter, FUSED_DIM),
+        )
+        self.multiscale_ffn = nn.Sequential(
+            nn.Linear(FUSED_DIM, FUSED_DIM * 2),
+            nn.GELU(),
+            nn.Dropout(FUSION_DROPOUT),
+            nn.Linear(FUSED_DIM * 2, FUSED_DIM),
         )
         self.multiscale_norm = nn.LayerNorm(FUSED_DIM)
 
@@ -129,8 +143,10 @@ class BidirectionalHierarchicalFusion(nn.Module):
         h_ts = self.cross_ts(h_t_seq, node_feats)  # [B, 1, FUSED_DIM]
         h_ts = h_ts.squeeze(1)                       # [B, FUSED_DIM]
 
-        # Direction 2: S→T — each node attends to temporal
-        h_st = self.cross_st(node_feats, h_t_seq)   # [B, N, FUSED_DIM]
+        # Direction 2: S→T — expand temporal to 8 tokens so attention is non-trivial
+        h_t_expanded = self.temporal_expand(h_temporal)        # [B, CNN_T_DIM*8]
+        h_t_expanded = h_t_expanded.view(B, self.n_temporal_tokens, -1)  # [B, 8, CNN_T_DIM]
+        h_st = self.cross_st(node_feats, h_t_expanded)        # [B, N, FUSED_DIM]
 
         # Gated combination
         h_st_mean = h_st.mean(dim=1)                 # [B, FUSED_DIM]

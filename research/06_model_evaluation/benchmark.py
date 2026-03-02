@@ -51,8 +51,15 @@ def load_test_npz():
         "y_det": d["label_detection"].astype(int),
         "y_type": d["label_type"].astype(int),
         "y_ph":  d["label_phase"].astype(int),
-        "y_loc": np.clip(d["label_location"].astype(int), 0, None),
+        "y_loc_raw": d["label_location"].astype(int),  # keep raw; -1 = no-fault
     }
+
+
+def _fix_loc_labels(raw_loc: np.ndarray, n_buses: int) -> np.ndarray:
+    """Map -1 (no-fault) → n_buses (last class index)."""
+    loc = raw_loc.copy()
+    loc[loc < 0] = n_buses
+    return loc
 
 
 def load_test_pkl():
@@ -143,10 +150,12 @@ def run_cnn_transformer(data: dict) -> dict:
                 for k in preds:
                     preds[k].extend(out[k].argmax(1).numpy().tolist())
 
+        n_buses = ckpt["n_buses"]
         result = {"model": "CNN-Transformer-v2"}
         result.update(_eval_all_tasks(preds, {
             "y_det": data["y_det"], "y_type": data["y_type"],
-            "y_ph": data["y_ph"], "y_loc": data["y_loc"]}))
+            "y_ph": data["y_ph"],
+            "y_loc": _fix_loc_labels(data["y_loc_raw"], n_buses)}))
         return result
     except Exception as e:
         logger.warning(f"CNN-T eval failed: {e}")
@@ -174,6 +183,7 @@ def run_r_gnn(pyg_list: list) -> dict:
         ei = pyg_list[0].edge_index
         ea = pyg_list[0].edge_attr
 
+        n_buses = ckpt["n_buses"]
         preds = {k: [] for k in ["detection","type","phase","location"]}
         trues = {"y_det": [], "y_type": [], "y_ph": [], "y_loc": []}
         with torch.no_grad():
@@ -185,7 +195,8 @@ def run_r_gnn(pyg_list: list) -> dict:
                 trues["y_det"].append(int(d.y_detection))
                 trues["y_type"].append(int(d.y_type))
                 trues["y_ph"].append(int(d.y_phase))
-                trues["y_loc"].append(max(0, int(d.y_location)))
+                raw = int(d.y_location)
+                trues["y_loc"].append(n_buses if raw < 0 else raw)
 
         result = {"model": "R-GNN-v2"}
         result.update(_eval_all_tasks(preds, trues))
@@ -217,6 +228,7 @@ def run_hybrid(data: dict, pyg_list: list) -> dict:
         ei = pyg_list[0].edge_index
         ea = pyg_list[0].edge_attr
 
+        n_buses = ckpt["n_buses"]
         preds = {k: [] for k in ["detection","type","phase","location"]}
         trues = {"y_det": [], "y_type": [], "y_ph": [], "y_loc": []}
         X = torch.tensor(data["X"], dtype=torch.float32)
@@ -231,7 +243,8 @@ def run_hybrid(data: dict, pyg_list: list) -> dict:
                 trues["y_det"].append(int(d.y_detection))
                 trues["y_type"].append(int(d.y_type))
                 trues["y_ph"].append(int(d.y_phase))
-                trues["y_loc"].append(max(0, int(d.y_location)))
+                raw = int(d.y_location)
+                trues["y_loc"].append(n_buses if raw < 0 else raw)
 
         result = {"model": "Hybrid-BHAF-v2"}
         result.update(_eval_all_tasks(preds, trues))

@@ -35,8 +35,8 @@ from config import (
     BATCH_SIZE, WEIGHT_DECAY, PATIENCE, MAX_GRAD_NORM,
     PHASE3A_EPOCHS, PHASE3A_LR,
     PHASE3B_EPOCHS, PHASE3B_LR_BRANCHES, PHASE3B_LR_FUSION,
-    COSINE_T0, COSINE_TMULT,
-    N_CLASSES_TYPE,
+    WARMUP_EPOCHS,
+    N_CLASSES_TYPE, N_CLASSES_PHASE,
 )
 
 logging.basicConfig(level=logging.INFO,
@@ -55,8 +55,7 @@ class HybridDataset(Dataset):
         self.y_det  = torch.tensor(d["label_detection"], dtype=torch.long)
         self.y_type = torch.tensor(d["label_type"],      dtype=torch.long)
         self.y_ph   = torch.tensor(d["label_phase"],     dtype=torch.long)
-        self.y_loc  = torch.clamp(
-            torch.tensor(d["label_location"], dtype=torch.long), min=0)
+        raw_loc     = torch.tensor(d["label_location"],  dtype=torch.long)
 
         with open(pkl_path, "rb") as f:
             self.pyg_list = pickle.load(f)
@@ -66,7 +65,7 @@ class HybridDataset(Dataset):
         self.y_det  = self.y_det[:n_min]
         self.y_type = self.y_type[:n_min]
         self.y_ph   = self.y_ph[:n_min]
-        self.y_loc  = self.y_loc[:n_min]
+        raw_loc     = raw_loc[:n_min]
         self.pyg_list = self.pyg_list[:n_min]
 
         d0 = self.pyg_list[0]
@@ -74,6 +73,10 @@ class HybridDataset(Dataset):
         self.edge_attr  = d0.edge_attr
         self.n_buses    = d0.x.shape[1] if d0.x.dim() == 3 else d0.x.shape[0]
         self.n_branches = B
+
+        # Fix: map -1 (no-fault) → n_buses (last class) instead of 0
+        self.y_loc = raw_loc.clone()
+        self.y_loc[self.y_loc < 0] = self.n_buses
 
     def __len__(self): return len(self.X_current)
 
@@ -94,16 +97,34 @@ def collate_fn(batch):
     )
 
 
-def make_loss_fns(class_weights, device):
-    w = torch.ones(N_CLASSES_TYPE)
+def _inverse_freq_weights(labels: torch.Tensor, n_classes: int) -> torch.Tensor:
+    """Compute inverse-frequency class weights from label tensor."""
+    counts = torch.bincount(labels, minlength=n_classes).float()
+    counts = counts.clamp(min=1.0)  # avoid div-by-zero
+    weights = counts.sum() / (n_classes * counts)
+    return weights
+
+
+def make_loss_fns(class_weights, device, n_buses: int,
+                  loc_labels: torch.Tensor, phase_labels: torch.Tensor):
+    # Type weights from pre-computed class_weights dict
+    w_type = torch.ones(N_CLASSES_TYPE)
     for cls, wt in class_weights.items():
         if cls < N_CLASSES_TYPE:
-            w[cls] = wt
+            w_type[cls] = wt
+
+    # Phase weights from training labels
+    w_phase = _inverse_freq_weights(phase_labels, N_CLASSES_PHASE)
+
+    # Location weights from training labels (N+1 classes: N buses + no-fault)
+    n_loc_classes = n_buses + 1
+    w_loc = _inverse_freq_weights(loc_labels, n_loc_classes)
+
     return (
-        nn.CrossEntropyLoss(),                          # detection
-        FocalLoss(gamma=2.0, weight=w.to(device)),      # type
-        FocalLoss(gamma=2.0),                            # phase
-        nn.CrossEntropyLoss(),                           # location
+        nn.CrossEntropyLoss(),                                    # detection
+        FocalLoss(gamma=2.0, weight=w_type.to(device)),           # type
+        FocalLoss(gamma=2.0, weight=w_phase.to(device)),          # phase
+        FocalLoss(gamma=1.0, weight=w_loc.to(device)),            # location
     )
 
 
@@ -216,7 +237,9 @@ def main():
     logger.info(f"Hybrid model params: {n_params:,}")
 
     CKPT_DIR.mkdir(parents=True, exist_ok=True)
-    loss_fns = make_loss_fns(class_weights, device)
+    loss_fns = make_loss_fns(class_weights, device, n_buses=n_buses,
+                             loc_labels=train_ds.y_loc,
+                             phase_labels=train_ds.y_ph)
     history = []
 
     # ========== Phase 3a: Warm-up (frozen branches) ==========
@@ -258,8 +281,13 @@ def main():
         {"params": fusion_params, "lr": PHASE3B_LR_FUSION},
     ], weight_decay=WEIGHT_DECAY)
 
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
-        optimizer, T_0=COSINE_T0, T_mult=COSINE_TMULT)
+    warmup_sched = torch.optim.lr_scheduler.LinearLR(
+        optimizer, start_factor=0.1, total_iters=WARMUP_EPOCHS)
+    cosine_sched = torch.optim.lr_scheduler.CosineAnnealingLR(
+        optimizer, T_max=PHASE3B_EPOCHS - WARMUP_EPOCHS)
+    scheduler = torch.optim.lr_scheduler.SequentialLR(
+        optimizer, schedulers=[warmup_sched, cosine_sched],
+        milestones=[WARMUP_EPOCHS])
 
     best_val = _training_loop(model, train_loader, val_loader, optimizer, scheduler,
                               loss_fns, device, ei, ea,

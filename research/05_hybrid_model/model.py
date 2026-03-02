@@ -127,11 +127,15 @@ class HybridModel(nn.Module):
         # Input: h_st [B, N, FUSED_DIM] concat node_feats [B, N, RGNN_DIM]
         loc_in = FUSED_DIM + RGNN_DIM
         self.loc_node_proj = nn.Sequential(
-            nn.Linear(loc_in, 64), nn.GELU(),
+            nn.Linear(loc_in, 128), nn.GELU(), nn.Dropout(0.1),
+            nn.Linear(128, 64), nn.GELU(),
             nn.Linear(64, 1),  # per-node score
         )
         # "No fault" logit from h_fused
-        self.loc_nofault = nn.Linear(FUSED_DIM, 1)
+        self.loc_nofault = nn.Sequential(
+            nn.Linear(FUSED_DIM, 64), nn.GELU(),
+            nn.Linear(64, 1),
+        )
 
         # Uncertainty-weighted multi-task loss
         self.uncertainty_loss = UncertaintyWeightedLoss(n_tasks=4)

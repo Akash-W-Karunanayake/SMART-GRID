@@ -44,24 +44,23 @@ N_CLASSES_PHASE     = 8
 BATCH_SIZE    = 16
 WEIGHT_DECAY  = 1e-4
 
-# Phase 3a: Freeze branches, train fusion + heads (5 epochs warm-up)
-PHASE3A_EPOCHS = 5
+# Phase 3a: Freeze branches, train fusion + heads (10 epochs warm-up)
+PHASE3A_EPOCHS = 10
 PHASE3A_LR     = 5e-4
 
-# Phase 3b: Unfreeze all, end-to-end fine-tuning (40 epochs)
-PHASE3B_EPOCHS = 40
+# Phase 3b: Unfreeze all, end-to-end fine-tuning (60 epochs)
+PHASE3B_EPOCHS = 60
 PHASE3B_LR_BRANCHES = 1e-4   # lower LR for pre-trained branches
 PHASE3B_LR_FUSION   = 5e-4   # higher LR for fusion
 
-# CosineAnnealingWarmRestarts
-COSINE_T0    = 10
-COSINE_TMULT = 2
+# Scheduler: LinearLR warmup + CosineAnnealingLR
+WARMUP_EPOCHS = 3
 
 # Gradient clipping
 MAX_GRAD_NORM = 1.0
 
 # Early stopping
-PATIENCE = 12
+PATIENCE = 20
 
 # Legacy compatibility
 EPOCHS        = PHASE3A_EPOCHS + PHASE3B_EPOCHS
@@ -70,3 +69,6 @@ LAMBDA_DETECT   = 1.0
 LAMBDA_TYPE     = 1.5
 LAMBDA_PHASE    = 0.5
 LAMBDA_LOCATION = 1.0
+
+# Multi-scale intermediate dim (two-stage projection)
+MULTISCALE_INTERMEDIATE = 492
