@@ -32,7 +32,7 @@ async def inject_fault(request: FaultInjectionRequest) -> Dict[str, Any]:
 
     One fault at a time (Q5). Fault persists until manually cleared (Q7).
     """
-    if not opendss_service.model_loaded:
+    if not opendss_service.is_loaded:
         raise HTTPException(400, "OpenDSS model not loaded. Run a simulation first.")
 
     if fault_injection_service.has_active_fault:
@@ -146,8 +146,8 @@ async def get_model_status() -> Dict[str, Any]:
     """Check if the fault detection model and DSS model are loaded."""
     return {
         "loaded": fault_detection_service.is_loaded,
-        "dss_model_loaded": opendss_service.model_loaded,
-        "can_inject": opendss_service.model_loaded and not fault_injection_service.has_active_fault,
+        "dss_model_loaded": opendss_service.is_loaded,
+        "can_inject": opendss_service.is_loaded and not fault_injection_service.has_active_fault,
         "n_buses": fault_detection_service._n_buses if fault_detection_service.is_loaded else None,
         "n_features_cnn": fault_detection_service._in_features_cnn if fault_detection_service.is_loaded else None,
     }
