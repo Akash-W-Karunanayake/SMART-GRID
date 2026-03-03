@@ -159,10 +159,19 @@ class FaultInjectionService:
         q = self._queued_fault
         self._queued_fault = None
 
-        # Inject into OpenDSS
+        # Inject into OpenDSS — remove any stale fault element first
         node_suffix = PHASE_NODES[q["phase"]]
         n_phases = PHASE_COUNT[q["phase"]]
         bus_spec = f"{q['bus']}{node_suffix}"
+
+        try:
+            dss.Text.Command(f"Fault.{FAULT_ELEMENT_NAME}.enabled=no")
+        except Exception:
+            pass  # element may not exist yet — that's fine
+        try:
+            dss.Text.Command(f"disable Fault.{FAULT_ELEMENT_NAME}")
+        except Exception:
+            pass
 
         cmd = (
             f"New Fault.{FAULT_ELEMENT_NAME} "
@@ -171,7 +180,16 @@ class FaultInjectionService:
             f"r={q['resistance']:.6f} "
             f"enabled=yes"
         )
-        dss.Text.Command(cmd)
+        try:
+            dss.Text.Command(cmd)
+        except Exception:
+            # If "New" fails due to duplicate, edit the existing element
+            logger.warning(f"Fault element already exists, editing instead of creating new")
+            dss.Text.Command(f"Edit Fault.{FAULT_ELEMENT_NAME} "
+                             f"bus1={bus_spec} "
+                             f"phases={n_phases} "
+                             f"r={q['resistance']:.6f} "
+                             f"enabled=yes")
 
         self._active_fault = ActiveFault(
             bus=q["bus"],

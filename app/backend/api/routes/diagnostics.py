@@ -65,18 +65,25 @@ async def inject_fault(request: FaultInjectionRequest) -> Dict[str, Any]:
         if not result["success"]:
             raise HTTPException(409, result["error"])
 
-        # Apply the queued fault immediately
-        fault_injection_service.apply_queued_fault(0)
+        try:
+            # Apply the queued fault immediately
+            fault_injection_service.apply_queued_fault(0)
 
-        # Run sub-cycle capture + model inference
-        prediction = simulation_service._run_fault_inference(0)
-        simulation_service._latest_prediction = prediction
+            # Run sub-cycle capture + model inference
+            prediction = simulation_service._run_fault_inference(0)
+            simulation_service._latest_prediction = prediction
 
-        return {
-            "success": True,
-            "message": f"Fault applied immediately: {request.fault_type} at {request.bus}",
-            "prediction_available": prediction is not None,
-        }
+            return {
+                "success": True,
+                "message": f"Fault applied immediately: {request.fault_type} at {request.bus}",
+                "prediction_available": prediction is not None,
+            }
+        except Exception as e:
+            # Clean up on failure so the user can retry
+            import logging
+            logging.getLogger(__name__).error(f"Fault injection failed: {e}", exc_info=True)
+            fault_injection_service.clear_fault()
+            raise HTTPException(500, f"Fault injection failed: {str(e)}")
 
 
 @router.post("/clear-fault")
