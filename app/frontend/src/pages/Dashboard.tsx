@@ -351,8 +351,7 @@ function buildFlowGraph(
   const augmentedTopology: Topology = { nodes: augmentedNodes, edges: augmentedEdges };
   const posMap = calculateRadialLayout(augmentedTopology);
 
-  // Determine day/night and solar activity from live metrics
-  const currentHour = liveMetrics?.hour ?? null;
+  // Determine solar activity from live metrics
   const solarActive = liveMetrics ? liveMetrics.total_solar_kw > 0 : false;
 
   // Create bus nodes (SVG icons)
