@@ -15,6 +15,7 @@ from models.schemas import (
 from services.simulation_service import simulation_service
 from services.fault_injection_service import fault_injection_service
 from services.fault_detection_service import fault_detection_service
+from services.opendss_service import opendss_service
 
 router = APIRouter(prefix="/diagnostics", tags=["Diagnostics"])
 
@@ -22,28 +23,60 @@ router = APIRouter(prefix="/diagnostics", tags=["Diagnostics"])
 @router.post("/inject-fault")
 async def inject_fault(request: FaultInjectionRequest) -> Dict[str, Any]:
     """
-    Queue a fault for injection at the next simulation step.
-    Only available when the simulation is running (Q6).
-    One fault at a time (Q5). Queued for next solve step (Q4).
+    Inject a fault into the OpenDSS circuit and run model inference.
+
+    Two modes:
+      - Live simulation running: queue fault for next solve step (Q4/Q6).
+      - No live simulation but DSS model loaded (e.g. after pipeline run):
+        apply fault immediately + run sub-cycle capture + inference.
+
+    One fault at a time (Q5). Fault persists until manually cleared (Q7).
     """
-    if not simulation_service.is_running:
-        raise HTTPException(400, "Simulation must be running to inject faults.")
+    if not opendss_service.model_loaded:
+        raise HTTPException(400, "OpenDSS model not loaded. Run a simulation first.")
 
-    if simulation_service.is_paused:
-        raise HTTPException(400, "Cannot inject fault while simulation is paused.")
+    if fault_injection_service.has_active_fault:
+        raise HTTPException(409, "A fault is already active. Clear it first.")
 
-    result = fault_injection_service.queue_fault(
-        bus=request.bus,
-        fault_type=request.fault_type,
-        phase=request.phase,
-        resistance=request.resistance,
-        current_step=simulation_service._current_step,
-    )
+    if simulation_service.is_running:
+        # Live simulation: queue for next solve step
+        if simulation_service.is_paused:
+            raise HTTPException(400, "Cannot inject fault while simulation is paused.")
 
-    if not result["success"]:
-        raise HTTPException(409, result["error"])
+        result = fault_injection_service.queue_fault(
+            bus=request.bus,
+            fault_type=request.fault_type,
+            phase=request.phase,
+            resistance=request.resistance,
+            current_step=simulation_service._current_step,
+        )
+        if not result["success"]:
+            raise HTTPException(409, result["error"])
+        return result
+    else:
+        # No live simulation: inject immediately + run inference
+        result = fault_injection_service.queue_fault(
+            bus=request.bus,
+            fault_type=request.fault_type,
+            phase=request.phase,
+            resistance=request.resistance,
+            current_step=0,
+        )
+        if not result["success"]:
+            raise HTTPException(409, result["error"])
 
-    return result
+        # Apply the queued fault immediately
+        fault_injection_service.apply_queued_fault(0)
+
+        # Run sub-cycle capture + model inference
+        prediction = simulation_service._run_fault_inference(0)
+        simulation_service._latest_prediction = prediction
+
+        return {
+            "success": True,
+            "message": f"Fault applied immediately: {request.fault_type} at {request.bus}",
+            "prediction_available": prediction is not None,
+        }
 
 
 @router.post("/clear-fault")
@@ -110,9 +143,11 @@ async def get_fault_history() -> List[Dict[str, Any]]:
 
 @router.get("/model-status")
 async def get_model_status() -> Dict[str, Any]:
-    """Check if the fault detection model is loaded."""
+    """Check if the fault detection model and DSS model are loaded."""
     return {
         "loaded": fault_detection_service.is_loaded,
+        "dss_model_loaded": opendss_service.model_loaded,
+        "can_inject": opendss_service.model_loaded and not fault_injection_service.has_active_fault,
         "n_buses": fault_detection_service._n_buses if fault_detection_service.is_loaded else None,
         "n_features_cnn": fault_detection_service._in_features_cnn if fault_detection_service.is_loaded else None,
     }

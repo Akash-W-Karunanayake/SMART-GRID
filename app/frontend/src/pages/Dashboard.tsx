@@ -45,71 +45,102 @@ const FAULT_TYPE_PHASES: Record<string, string[]> = {
 function FaultBanner({ fault }: { fault?: FaultPayload | null }) {
   const hasActiveFault = fault?.has_active_fault === true;
   const pred = fault?.prediction;
-  const isFaultDetected = pred?.is_fault === true;
 
-  if (!hasActiveFault && !pred) {
+  // State 1: No model prediction — idle (Q4: never show anything not from model)
+  if (!pred && !hasActiveFault) {
     return (
       <div className="card bg-slate-800 border-slate-600 py-3 px-5">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <CheckCircle className="w-6 h-6 text-green-400" />
-            <div>
-              <span className="text-lg font-bold text-green-400">NORMAL OPERATION</span>
-              <span className="text-sm text-slate-400 ml-3">No faults detected</span>
-            </div>
+        <div className="flex items-center space-x-3">
+          <Activity className="w-6 h-6 text-slate-500" />
+          <div>
+            <span className="text-lg font-bold text-slate-400">IDLE</span>
+            <span className="text-sm text-slate-500 ml-3">Inject a fault to run diagnostics</span>
           </div>
         </div>
       </div>
     );
   }
 
-  const af = fault?.active_fault;
-  const bgClass = isFaultDetected
-    ? 'bg-red-900/40 border-red-600'
-    : 'bg-amber-900/40 border-amber-600';
-  const statusColor = isFaultDetected ? 'text-red-400' : 'text-amber-400';
-  const StatusIcon = isFaultDetected ? AlertTriangle : Activity;
-
-  return (
-    <div className={`card ${bgClass} py-3 px-5`}>
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <div className="flex items-center space-x-3">
-          <StatusIcon className={`w-6 h-6 ${statusColor}`} />
-          <span className={`text-lg font-bold ${statusColor}`}>
-            {isFaultDetected ? 'FAULT DETECTED' : 'FAULT INJECTED'}
-          </span>
-        </div>
-        <div className="flex items-center space-x-6 text-sm">
-          {pred && (
-            <>
+  // State 2: Active fault but no prediction yet — waiting for model
+  if (hasActiveFault && !pred) {
+    const af = fault?.active_fault;
+    return (
+      <div className="card bg-amber-900/40 border-amber-600 py-3 px-5">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center space-x-3">
+            <Activity className="w-6 h-6 text-amber-400 animate-pulse" />
+            <span className="text-lg font-bold text-amber-400">ANALYZING...</span>
+          </div>
+          {af && (
+            <div className="flex items-center space-x-4 text-sm">
+              <div>
+                <span className="text-slate-400">Bus: </span>
+                <span className="text-white font-mono">{af.bus}</span>
+              </div>
               <div>
                 <span className="text-slate-400">Type: </span>
-                <span className="text-white font-mono font-bold">{pred.fault_type}</span>
+                <span className="text-white font-mono">{af.fault_type}</span>
               </div>
-              <div>
-                <span className="text-slate-400">Phase: </span>
-                <span className="text-white font-mono font-bold">{pred.fault_phase}</span>
-              </div>
-              <div>
-                <span className="text-slate-400">Confidence: </span>
-                <span className="text-white font-mono font-bold">
-                  {(pred.detection_confidence * 100).toFixed(1)}%
-                </span>
-              </div>
-              <div>
-                <span className="text-slate-400">Location: </span>
-                <span className="text-white font-mono font-bold">{pred.fault_location_bus}</span>
-              </div>
-            </>
-          )}
-          {af && !pred && (
-            <div>
-              <span className="text-slate-400">Bus: </span>
-              <span className="text-white font-mono">{af.bus}</span>
-              <span className="text-slate-400 ml-2">Type: </span>
-              <span className="text-white font-mono">{af.fault_type}</span>
             </div>
           )}
+        </div>
+      </div>
+    );
+  }
+
+  // State 3: Model prediction exists — show model output
+  const isFaultDetected = pred?.is_fault === true;
+
+  // Model says normal (is_fault=false) — this IS a model output
+  if (!isFaultDetected) {
+    return (
+      <div className="card bg-green-900/30 border-green-700 py-3 px-5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <CheckCircle className="w-6 h-6 text-green-400" />
+            <div>
+              <span className="text-lg font-bold text-green-400">NORMAL</span>
+              <span className="text-sm text-slate-400 ml-3">Model prediction: no fault detected</span>
+            </div>
+          </div>
+          <div className="text-sm">
+            <span className="text-slate-400">Confidence: </span>
+            <span className="text-white font-mono font-bold">
+              {((1 - (pred?.detection_confidence ?? 0)) * 100).toFixed(1)}%
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // State 4: Model detected fault — show full prediction details
+  return (
+    <div className="card bg-red-900/40 border-red-600 py-3 px-5">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="flex items-center space-x-3">
+          <AlertTriangle className="w-6 h-6 text-red-400" />
+          <span className="text-lg font-bold text-red-400">FAULT DETECTED</span>
+        </div>
+        <div className="flex items-center space-x-6 text-sm">
+          <div>
+            <span className="text-slate-400">Type: </span>
+            <span className="text-white font-mono font-bold">{pred!.fault_type}</span>
+          </div>
+          <div>
+            <span className="text-slate-400">Phase: </span>
+            <span className="text-white font-mono font-bold">{pred!.fault_phase}</span>
+          </div>
+          <div>
+            <span className="text-slate-400">Confidence: </span>
+            <span className="text-white font-mono font-bold">
+              {(pred!.detection_confidence * 100).toFixed(1)}%
+            </span>
+          </div>
+          <div>
+            <span className="text-slate-400">Location: </span>
+            <span className="text-white font-mono font-bold">{pred!.fault_location_bus}</span>
+          </div>
           {fault?.detection_latency_steps != null && (
             <div>
               <span className="text-slate-400">Latency: </span>
@@ -494,13 +525,9 @@ function buildFlowGraph(
 function FaultInjectionPanel({
   topology,
   fault,
-  simRunning,
-  simPaused,
 }: {
   topology: Topology | null;
   fault?: FaultPayload | null;
-  simRunning: boolean;
-  simPaused: boolean;
 }) {
   const [bus, setBus] = useState('');
   const [faultType, setFaultType] = useState('LG');
@@ -508,11 +535,24 @@ function FaultInjectionPanel({
   const [resistance, setResistance] = useState(1.0);
   const [status, setStatus] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [modelReady, setModelReady] = useState(false);
 
   const busNames = useMemo(() => {
     if (!topology) return [];
     return topology.nodes.map(n => n.id).sort();
   }, [topology]);
+
+  // Poll model status to know if injection is available
+  useEffect(() => {
+    const check = () => {
+      api.getModelStatus()
+        .then((s) => setModelReady(s.can_inject ?? false))
+        .catch(() => setModelReady(false));
+    };
+    check();
+    const interval = setInterval(check, 5000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Reset phase when fault type changes
   useEffect(() => {
@@ -522,8 +562,26 @@ function FaultInjectionPanel({
     }
   }, [faultType]);
 
-  const canInject = simRunning && !simPaused && !fault?.has_active_fault && bus !== '' && !submitting;
+  const canInject = modelReady && !fault?.has_active_fault && bus !== '' && !submitting;
   const canClear = fault?.has_active_fault === true && !submitting;
+
+  // After inject/clear, fetch fault status and update gridState
+  const refreshFaultState = async () => {
+    try {
+      const resp = await api.getFaultStatus();
+      // Map backend FaultStatusResponse to frontend FaultPayload shape
+      const faultPayload: FaultPayload = {
+        has_active_fault: resp.has_active_fault,
+        active_fault: resp.active_fault,
+        prediction: resp.latest_prediction as any,
+        detection_latency_steps: resp.detection_latency_steps,
+      };
+      const store = useGridStore.getState();
+      if (store.gridState) {
+        store.setGridState({ ...store.gridState, fault: faultPayload });
+      }
+    } catch { /* ignore — WebSocket will update if sim is running */ }
+  };
 
   const handleInject = async () => {
     setSubmitting(true);
@@ -531,6 +589,8 @@ function FaultInjectionPanel({
     try {
       const res = await api.injectFault(bus, faultType, phase, resistance);
       setStatus({ type: 'success', msg: res.message });
+      // Refresh fault state (needed when no live simulation is streaming updates)
+      await refreshFaultState();
     } catch (err: any) {
       setStatus({ type: 'error', msg: err.message ?? 'Injection failed' });
     } finally {
@@ -544,6 +604,7 @@ function FaultInjectionPanel({
     try {
       const res = await api.clearFault();
       setStatus({ type: 'success', msg: res.message });
+      await refreshFaultState();
     } catch (err: any) {
       setStatus({ type: 'error', msg: err.message ?? 'Clear failed' });
     } finally {
@@ -643,9 +704,9 @@ function FaultInjectionPanel({
           </p>
         )}
 
-        {/* Hint when sim not running */}
-        {!simRunning && (
-          <p className="text-[10px] text-slate-500">Start a simulation to enable fault injection</p>
+        {/* Hint when model not ready */}
+        {!modelReady && (
+          <p className="text-[10px] text-slate-500">Run a simulation first to load the grid model</p>
         )}
       </div>
     </div>
@@ -786,7 +847,6 @@ function NetworkStats({ topology }: { topology: Topology | null }) {
 export default function Dashboard() {
   const {
     gridState,
-    simulationStatus,
     lastSimDate,
     topology,
     setTopology,
@@ -1039,8 +1099,6 @@ export default function Dashboard() {
           <FaultInjectionPanel
             topology={topology}
             fault={gridState?.fault}
-            simRunning={simulationStatus?.running ?? false}
-            simPaused={simulationStatus?.paused ?? false}
           />
           <ConnectionTypesLegend />
           <SelectedNodePanel node={selectedNode} />

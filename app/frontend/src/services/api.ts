@@ -197,7 +197,7 @@ class ApiService {
   }
 
   async getModelStatus() {
-    return this.request<{ loaded: boolean; n_buses: number | null; n_features_cnn: number | null }>(
+    return this.request<{ loaded: boolean; dss_model_loaded: boolean; can_inject: boolean; n_buses: number | null; n_features_cnn: number | null }>(
       '/diagnostics/model-status'
     );
   }
