@@ -41,16 +41,16 @@ N_CLASSES_PHASE     = 8
 # N_CLASSES_LOCATION: inferred at runtime
 
 # Training — Phase 3: 3-phase curriculum
-BATCH_SIZE    = 16
+BATCH_SIZE    = 64
 WEIGHT_DECAY  = 1e-4
 
-# Phase 3a: Freeze branches, train fusion + heads (10 epochs warm-up)
-PHASE3A_EPOCHS = 10
+# Phase 3a: Freeze branches, train fusion + heads (5 epochs warm-up)
+PHASE3A_EPOCHS = 5
 PHASE3A_LR     = 5e-4
 
-# Phase 3b: Unfreeze all, end-to-end fine-tuning (60 epochs)
-PHASE3B_EPOCHS = 60
-PHASE3B_LR_BRANCHES = 1e-4   # lower LR for pre-trained branches
+# Phase 3b: Unfreeze all, end-to-end fine-tuning (40 epochs)
+PHASE3B_EPOCHS = 40
+PHASE3B_LR_BRANCHES = 5e-5   # very low — prevent catastrophic forgetting
 PHASE3B_LR_FUSION   = 5e-4   # higher LR for fusion
 
 # Scheduler: LinearLR warmup + CosineAnnealingLR
@@ -65,10 +65,10 @@ PATIENCE = 20
 # Legacy compatibility
 EPOCHS        = PHASE3A_EPOCHS + PHASE3B_EPOCHS
 LEARNING_RATE = PHASE3A_LR
-LAMBDA_DETECT   = 1.0
+LAMBDA_DETECT   = 2.0    # high — CNN-T gets 94% alone, fusion must preserve this
 LAMBDA_TYPE     = 1.5
-LAMBDA_PHASE    = 0.5
-LAMBDA_LOCATION = 1.0
+LAMBDA_PHASE    = 1.0    # raised — R-GNN gets 71% alone
+LAMBDA_LOCATION = 2.0    # high — hardest task, needs strong gradient
 
 # Multi-scale intermediate dim (two-stage projection)
 MULTISCALE_INTERMEDIATE = 492

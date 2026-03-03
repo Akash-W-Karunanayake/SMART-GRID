@@ -53,22 +53,17 @@ from config import (
 )
 
 
-class UncertaintyWeightedLoss(nn.Module):
-    """
-    Multi-task loss with learnable uncertainty weighting (Kendall et al.).
-    Loss = Σᵢ (1/(2σᵢ²)) · Lᵢ + log(σᵢ)
-    """
+class FixedWeightedLoss(nn.Module):
+    """Fixed-weight multi-task loss — no learned suppression."""
 
-    def __init__(self, n_tasks: int = 4):
+    def __init__(self, weights: list):
         super().__init__()
-        # log(σ²) parameters — initialized to 0 (σ=1)
-        self.log_vars = nn.Parameter(torch.zeros(n_tasks))
+        self.register_buffer("weights", torch.tensor(weights, dtype=torch.float32))
 
     def forward(self, losses: list) -> torch.Tensor:
-        total = torch.tensor(0.0, device=self.log_vars.device)
+        total = torch.tensor(0.0, device=self.weights.device)
         for i, loss in enumerate(losses):
-            precision = torch.exp(-self.log_vars[i])
-            total = total + precision * loss + self.log_vars[i]
+            total = total + self.weights[i] * loss
         return total
 
 
@@ -137,8 +132,10 @@ class HybridModel(nn.Module):
             nn.Linear(64, 1),
         )
 
-        # Uncertainty-weighted multi-task loss
-        self.uncertainty_loss = UncertaintyWeightedLoss(n_tasks=4)
+        # Fixed-weight multi-task loss — detection heavy to preserve CNN-T signal
+        from config import LAMBDA_DETECT, LAMBDA_TYPE, LAMBDA_PHASE, LAMBDA_LOCATION
+        self.task_loss = FixedWeightedLoss(
+            [LAMBDA_DETECT, LAMBDA_TYPE, LAMBDA_PHASE, LAMBDA_LOCATION])
 
     def forward(self, x_current, x_voltage, edge_index, edge_attr=None):
         """
@@ -203,7 +200,7 @@ class HybridModel(nn.Module):
             fl_phase(outputs["phase"], y_ph),
             ce_loc(outputs["location"], y_loc),
         ]
-        return self.uncertainty_loss(losses)
+        return self.task_loss(losses)
 
     def freeze_branches(self, freeze_cnn: bool = True, freeze_gnn: bool = True):
         """Freeze sub-model weights for fine-tuning fusion only."""

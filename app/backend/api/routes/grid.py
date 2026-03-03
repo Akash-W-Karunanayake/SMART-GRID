@@ -12,8 +12,6 @@ from models.schemas import (
     TopologyResponse,
     SetLoadMultiplierRequest,
     SetGenerationMultiplierRequest,
-    InjectFaultRequest,
-    FaultResponse
 )
 
 router = APIRouter(prefix="/grid", tags=["Grid"])
@@ -278,34 +276,8 @@ async def set_generation_multiplier(request: SetGenerationMultiplierRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/inject-fault", response_model=FaultResponse)
-async def inject_fault(request: InjectFaultRequest):
-    """
-    Inject a fault at specified bus for testing fault detection/self-healing.
-    """
-    if not opendss_service.is_loaded:
-        raise HTTPException(status_code=400, detail="Model not loaded. Call /grid/load first.")
-
-    try:
-        result = opendss_service.inject_fault(
-            bus=request.bus,
-            fault_type=request.fault_type.value,
-            resistance=request.resistance
-        )
-
-        if not result["success"]:
-            return FaultResponse(success=False, error=result.get("error"))
-
-        return FaultResponse(
-            success=True,
-            message="Fault injected successfully",
-            bus=result["bus"],
-            fault_type=result["fault_type"],
-            fault_current_amps=result["fault_current_amps"],
-            resistance=result["resistance"]
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    # NOTE: Legacy /grid/inject-fault removed.
+    # Use /api/v1/diagnostics/inject-fault for model-backed fault injection.
 
 
 @router.get("/info")

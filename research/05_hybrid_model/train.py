@@ -28,7 +28,7 @@ from torch.utils.data import Dataset, DataLoader
 sys.path.insert(0, str(Path(__file__).parent.parent / "04_r_gnn"))
 sys.path.insert(0, str(Path(__file__).parent))
 
-from model import HybridModel, FocalLoss
+from model import HybridModel, FocalLoss, FixedWeightedLoss
 from config import (
     TRAIN_NPZ, VAL_NPZ, TRAIN_PKL, VAL_PKL, WEIGHTS_PATH, CKPT_DIR,
     CNN_T_CKPT, RGNN_CKPT,
@@ -36,7 +36,7 @@ from config import (
     PHASE3A_EPOCHS, PHASE3A_LR,
     PHASE3B_EPOCHS, PHASE3B_LR_BRANCHES, PHASE3B_LR_FUSION,
     WARMUP_EPOCHS,
-    N_CLASSES_TYPE, N_CLASSES_PHASE,
+    N_CLASSES_TYPE, N_CLASSES_PHASE, N_CLASSES_DETECTION,
 )
 
 logging.basicConfig(level=logging.INFO,
@@ -106,12 +106,16 @@ def _inverse_freq_weights(labels: torch.Tensor, n_classes: int) -> torch.Tensor:
 
 
 def make_loss_fns(class_weights, device, n_buses: int,
-                  loc_labels: torch.Tensor, phase_labels: torch.Tensor):
+                  det_labels: torch.Tensor, loc_labels: torch.Tensor,
+                  phase_labels: torch.Tensor):
     # Type weights from pre-computed class_weights dict
     w_type = torch.ones(N_CLASSES_TYPE)
     for cls, wt in class_weights.items():
         if cls < N_CLASSES_TYPE:
             w_type[cls] = wt
+
+    # Detection weights — simple weighted CE for binary task
+    w_det = _inverse_freq_weights(det_labels, N_CLASSES_DETECTION)
 
     # Phase weights from training labels
     w_phase = _inverse_freq_weights(phase_labels, N_CLASSES_PHASE)
@@ -121,7 +125,7 @@ def make_loss_fns(class_weights, device, n_buses: int,
     w_loc = _inverse_freq_weights(loc_labels, n_loc_classes)
 
     return (
-        nn.CrossEntropyLoss(),                                    # detection
+        nn.CrossEntropyLoss(weight=w_det.to(device)),             # detection — simple weighted CE
         FocalLoss(gamma=2.0, weight=w_type.to(device)),           # type
         FocalLoss(gamma=2.0, weight=w_phase.to(device)),          # phase
         FocalLoss(gamma=1.0, weight=w_loc.to(device)),            # location
@@ -220,10 +224,13 @@ def main():
     n_buses    = train_ds.n_buses
     in_feat    = train_ds.X_current.shape[-1]
 
+    n_workers = 2 if device.type == "cuda" else 0
     train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True,
-                              collate_fn=collate_fn, num_workers=0)
+                              collate_fn=collate_fn, num_workers=n_workers,
+                              pin_memory=(device.type == "cuda"))
     val_loader   = DataLoader(val_ds,   batch_size=args.batch_size, shuffle=False,
-                              collate_fn=collate_fn, num_workers=0)
+                              collate_fn=collate_fn, num_workers=n_workers,
+                              pin_memory=(device.type == "cuda"))
 
     class_weights = {}
     if WEIGHTS_PATH.exists():
@@ -238,6 +245,7 @@ def main():
 
     CKPT_DIR.mkdir(parents=True, exist_ok=True)
     loss_fns = make_loss_fns(class_weights, device, n_buses=n_buses,
+                             det_labels=train_ds.y_det,
                              loc_labels=train_ds.y_loc,
                              phase_labels=train_ds.y_ph)
     history = []
@@ -273,8 +281,7 @@ def main():
                    list(model.head_type.parameters()) + \
                    list(model.head_phase.parameters()) + \
                    list(model.loc_node_proj.parameters()) + \
-                   list(model.loc_nofault.parameters()) + \
-                   list(model.uncertainty_loss.parameters())
+                   list(model.loc_nofault.parameters())
 
     optimizer = torch.optim.Adam([
         {"params": branch_params, "lr": PHASE3B_LR_BRANCHES},

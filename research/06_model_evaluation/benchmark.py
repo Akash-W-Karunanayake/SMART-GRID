@@ -21,9 +21,6 @@ warnings.filterwarnings("ignore")
 
 RESEARCH_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(Path(__file__).parent))
-sys.path.insert(0, str(RESEARCH_DIR / "03_cnn_transformer"))
-sys.path.insert(0, str(RESEARCH_DIR / "04_r_gnn"))
-sys.path.insert(0, str(RESEARCH_DIR / "05_hybrid_model"))
 
 from metrics import compute_all_metrics, FAULT_TYPE_NAMES
 
@@ -133,10 +130,14 @@ def run_cnn_transformer(data: dict) -> dict:
 
     try:
         import importlib.util
+        # Clear cached config so the correct stage config is used
+        sys.modules.pop("config", None)
+        sys.path.insert(0, str(RESEARCH_DIR / "03_cnn_transformer"))
         _spec = importlib.util.spec_from_file_location(
             "cnn_t_model", RESEARCH_DIR / "03_cnn_transformer" / "model.py")
         _mod = importlib.util.module_from_spec(_spec); _spec.loader.exec_module(_mod)
         CNNTransformerModel = _mod.CNNTransformerModel
+        sys.modules.pop("config", None)  # clean up after load
         ckpt = torch.load(ckpt_path, map_location="cpu")
         model = CNNTransformerModel(ckpt["in_features"], ckpt["n_buses"])
         model.load_state_dict(ckpt["model_state"])
@@ -160,6 +161,10 @@ def run_cnn_transformer(data: dict) -> dict:
     except Exception as e:
         logger.warning(f"CNN-T eval failed: {e}")
         return {"model": "CNN-Transformer-v2"}
+    finally:
+        # Ensure sys.path is cleaned up if it was modified
+        if str(RESEARCH_DIR / "03_cnn_transformer") in sys.path:
+            sys.path.remove(str(RESEARCH_DIR / "03_cnn_transformer"))
 
 
 def run_r_gnn(pyg_list: list) -> dict:
@@ -171,10 +176,14 @@ def run_r_gnn(pyg_list: list) -> dict:
 
     try:
         import importlib.util
+        # Clear cached config so 04_r_gnn/config.py is used
+        sys.modules.pop("config", None)
+        sys.path.insert(0, str(RESEARCH_DIR / "04_r_gnn"))
         _spec = importlib.util.spec_from_file_location(
             "rgnn_model", RESEARCH_DIR / "04_r_gnn" / "model.py")
         _mod = importlib.util.module_from_spec(_spec); _spec.loader.exec_module(_mod)
         RGNNModel = _mod.RGNNModel
+        sys.modules.pop("config", None)  # clean up after load
         ckpt   = torch.load(ckpt_path, map_location="cpu")
         model  = RGNNModel(n_buses=ckpt["n_buses"])
         model.load_state_dict(ckpt["model_state"])
@@ -204,6 +213,10 @@ def run_r_gnn(pyg_list: list) -> dict:
     except Exception as e:
         logger.warning(f"R-GNN eval failed: {e}")
         return {"model": "R-GNN-v2"}
+    finally:
+        # Ensure sys.path is cleaned up if it was modified
+        if str(RESEARCH_DIR / "04_r_gnn") in sys.path:
+            sys.path.remove(str(RESEARCH_DIR / "04_r_gnn"))
 
 
 def run_hybrid(data: dict, pyg_list: list) -> dict:
@@ -215,11 +228,15 @@ def run_hybrid(data: dict, pyg_list: list) -> dict:
 
     try:
         import importlib.util
+        # Clear cached config and stage-specific modules so 05_hybrid_model's are used
+        for mod_name in ["config", "fusion", "cnn_transformer_model", "rgnn_model"]:
+            sys.modules.pop(mod_name, None)
         sys.path.insert(0, str(RESEARCH_DIR / "05_hybrid_model"))
         _spec = importlib.util.spec_from_file_location(
             "hybrid_model", RESEARCH_DIR / "05_hybrid_model" / "model.py")
         _mod = importlib.util.module_from_spec(_spec); _spec.loader.exec_module(_mod)
         HybridModel = _mod.HybridModel
+        sys.modules.pop("config", None)  # clean up after load
         ckpt = torch.load(ckpt_path, map_location="cpu")
         model = HybridModel(in_features_cnn=ckpt["in_features_cnn"], n_buses=ckpt["n_buses"])
         model.load_state_dict(ckpt["model_state"])

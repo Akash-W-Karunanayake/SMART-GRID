@@ -23,7 +23,7 @@ pydantic-settings==2.1.0
 # CORS
 aiofiles==23.2.1
 
-# For ML/DL integration (future)
-# torch>=2.0.0
+# For ML/DL integration
+torch>=2.0.0
 # tensorflow>=2.15.0
 # scikit-learn>=1.4.0
