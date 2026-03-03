@@ -29,7 +29,7 @@ import {
 } from 'lucide-react';
 import { useGridStore, type LiveMetrics } from '../stores/gridStore';
 import api from '../services/api';
-import type { Topology, TopologyNode, TopologyEdge } from '../types';
+import type { Topology, TopologyNode, TopologyEdge, FaultPayload } from '../types';
 import { getGridSvgIcon, type GridSvgProps } from '../components/grid/GridSvgIcons';
 import { TransformerSvg } from '../components/grid/GridSvgIcons';
 import TransformerNode from '../components/grid/TransformerNode';
@@ -71,14 +71,12 @@ function StatCard({ title, value, unit, icon: Icon, color = 'blue' }: StatCardPr
 // ─── Custom SVG Node ───────────────────────────────────────────
 function SvgGridNode({ data }: { data: any }) {
   const SvgIcon: React.FC<GridSvgProps> = data.svgIcon;
-  const statusColors = {
-    normal: { text: 'text-green-400' },
-    low: { text: 'text-amber-400' },
-    high: { text: 'text-red-400' },
-  };
+
   // For PV/solar nodes: show 'off' status when it's nighttime
-  const effectiveStatus = data.isSolar && data.solarOff ? 'off' : (data.voltageStatus ?? 'normal');
-  const colors = statusColors[effectiveStatus as keyof typeof statusColors] || statusColors.normal;
+  const effectiveStatus = data.isSolar && data.solarOff ? 'off' : 'normal';
+
+  // Fault heat map: override with 'fault' status when this bus is fault-highlighted
+  const displayStatus = data.faultHighlight ? 'fault' : effectiveStatus;
 
   return (
     <div className={`relative flex flex-col items-center group ${data.isPlaybackActive ? 'transition-all duration-300' : ''}`}>
@@ -86,7 +84,7 @@ function SvgGridNode({ data }: { data: any }) {
       <Handle type="target" position={Position.Left} className="!bg-slate-400 !w-2 !h-2" />
 
       <div className={data.isPlaybackActive && !data.solarOff && data.isSolar ? 'animate-pulse' : ''}>
-        <SvgIcon size={28} status={effectiveStatus} />
+        <SvgIcon size={28} status={displayStatus} />
       </div>
 
       <div
@@ -100,9 +98,10 @@ function SvgGridNode({ data }: { data: any }) {
         <div className="text-[8px] text-slate-400">{data.kv} kV</div>
       )}
 
-      {data.voltagePu != null && (
-        <div className={`text-[9px] font-medium ${colors.text}`}>
-          {data.voltagePu.toFixed(3)} pu
+      {/* Show fault probability when highlighted */}
+      {data.faultProb != null && (
+        <div className="text-[9px] font-medium text-red-400">
+          {(data.faultProb * 100).toFixed(1)}%
         </div>
       )}
 
@@ -160,6 +159,7 @@ function buildFlowGraph(
   gridState: any,
   liveMetrics?: LiveMetrics | null,
   isPlaybackActive?: boolean,
+  faultPayload?: FaultPayload | null,
 ): { nodes: Node[]; edges: Edge[] } {
   const nodes: Node[] = [];
   const edges: Edge[] = [];
@@ -201,14 +201,11 @@ function buildFlowGraph(
     const pos = posMap.get(node.id) ?? { x: 0, y: 0 };
     const busData = gridState?.buses?.[node.id];
 
-    // During playback: prefer per-step bus voltage; fall back to gridState
-    const liveV = liveMetrics?.bus_voltages?.[node.id];
-    const voltagePu = liveV ?? busData?.voltage_pu?.[0];
-    const voltageStatus: 'normal' | 'low' | 'high' = voltagePu
-      ? voltagePu < 0.95 ? 'low'
-        : voltagePu > 1.05 ? 'high'
-        : 'normal'
-      : 'normal';
+    // Fault heat map: only active when is_fault=true (Q10)
+    const isFaultActive = faultPayload?.prediction?.is_fault === true;
+    const locProbs = faultPayload?.prediction?.location_probabilities;
+    const faultProb = isFaultActive && locProbs ? (locProbs[node.id] ?? null) : null;
+    const faultHighlight = faultProb !== null && faultProb > 0.01;
 
     const shortLabel = node.label.length > 14
       ? node.label.substring(0, 14) + '...'
@@ -237,8 +234,8 @@ function buildFlowGraph(
         shortLabel,
         kv: node.kv,
         svgIcon: getGridSvgIcon(node.label),
-        voltageStatus,
-        voltagePu,
+        faultHighlight,
+        faultProb,
         isSolar,
         solarOff: isSolar && isPlaybackActive && !solarActive,
         isPlaybackActive: !!isPlaybackActive,
@@ -340,27 +337,6 @@ function buildFlowGraph(
 }
 
 // ─── Side Panel Components ─────────────────────────────────────
-function VoltageStatusLegend() {
-  return (
-    <div className="card">
-      <h3 className="font-semibold text-white mb-3 text-sm">Voltage Status</h3>
-      <div className="space-y-2 text-xs">
-        <div className="flex items-center">
-          <div className="w-3 h-3 rounded-full bg-green-500 mr-2" />
-          <span className="text-slate-300">Normal (0.95-1.05 pu)</span>
-        </div>
-        <div className="flex items-center">
-          <div className="w-3 h-3 rounded-full bg-amber-500 mr-2" />
-          <span className="text-slate-300">Low (&lt;0.95 pu)</span>
-        </div>
-        <div className="flex items-center">
-          <div className="w-3 h-3 rounded-full bg-red-500 mr-2" />
-          <span className="text-slate-300">High (&gt;1.05 pu)</span>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function ConnectionTypesLegend() {
   return (
@@ -553,6 +529,7 @@ export default function Dashboard() {
         gridState,
         liveMetrics,
         isActive,
+        gridState?.fault ?? null,
       );
       setNodes(flowNodes);
       setEdges(flowEdges);
@@ -853,9 +830,7 @@ export default function Dashboard() {
             <MiniMap
               nodeColor={(node) => {
                 if (node.id.startsWith('__xfmr_')) return '#a855f7';
-                const status = node.data?.voltageStatus;
-                if (status === 'low') return '#f59e0b';
-                if (status === 'high') return '#ef4444';
+                if (node.data?.faultHighlight) return '#ef4444';
                 return '#22c55e';
               }}
               maskColor="rgba(0, 0, 0, 0.8)"
@@ -868,7 +843,6 @@ export default function Dashboard() {
 
         {/* Side Panel */}
         <div className="space-y-3 overflow-y-auto">
-          <VoltageStatusLegend />
           <ConnectionTypesLegend />
           <SelectedNodePanel node={selectedNode} />
           <NetworkStats topology={topology} />
