@@ -16,10 +16,7 @@ import 'reactflow/dist/style.css';
 import {
   Activity,
   Zap,
-  Sun,
-  Wind,
   AlertTriangle,
-  Thermometer,
   CheckCircle,
   Network,
   RefreshCw,
@@ -35,34 +32,197 @@ import { TransformerSvg } from '../components/grid/GridSvgIcons';
 import TransformerNode from '../components/grid/TransformerNode';
 import { calculateRadialLayout } from '../components/grid/RadialLayout';
 
-// ─── Stat Card ─────────────────────────────────────────────────
-interface StatCardProps {
-  title: string;
-  value: string | number;
-  unit?: string;
-  icon: React.ElementType;
-  color?: string;
-}
+// Valid phases per fault type (mirrors backend FAULT_TYPE_PHASES)
+const FAULT_TYPE_PHASES: Record<string, string[]> = {
+  LG: ['A', 'B', 'C'],
+  LL: ['AB', 'BC', 'CA'],
+  LLG: ['ABG', 'BCG', 'CAG'],
+  LLL: ['ABC'],
+  HIF: ['A', 'B', 'C'],
+};
 
-function StatCard({ title, value, unit, icon: Icon, color = 'blue' }: StatCardProps) {
-  const colorClasses: Record<string, string> = {
-    blue: 'bg-blue-900/50 border-blue-700 text-blue-400',
-    green: 'bg-green-900/50 border-green-700 text-green-400',
-    amber: 'bg-amber-900/50 border-amber-700 text-amber-400',
-    red: 'bg-red-900/50 border-red-700 text-red-400',
-  };
+// ─── Fault Detection Banner ───────────────────────────────────
+function FaultBanner({ fault }: { fault?: FaultPayload | null }) {
+  const hasActiveFault = fault?.has_active_fault === true;
+  const pred = fault?.prediction;
+  const isFaultDetected = pred?.is_fault === true;
+
+  if (!hasActiveFault && !pred) {
+    return (
+      <div className="card bg-slate-800 border-slate-600 py-3 px-5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <CheckCircle className="w-6 h-6 text-green-400" />
+            <div>
+              <span className="text-lg font-bold text-green-400">NORMAL OPERATION</span>
+              <span className="text-sm text-slate-400 ml-3">No faults detected</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const af = fault?.active_fault;
+  const bgClass = isFaultDetected
+    ? 'bg-red-900/40 border-red-600'
+    : 'bg-amber-900/40 border-amber-600';
+  const statusColor = isFaultDetected ? 'text-red-400' : 'text-amber-400';
+  const StatusIcon = isFaultDetected ? AlertTriangle : Activity;
 
   return (
-    <div className={`card ${colorClasses[color] ?? colorClasses.blue}`}>
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm text-slate-400">{title}</p>
-          <p className="text-2xl font-bold text-white mt-1">
-            {value}
-            {unit && <span className="text-sm font-normal ml-1">{unit}</span>}
-          </p>
+    <div className={`card ${bgClass} py-3 px-5`}>
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="flex items-center space-x-3">
+          <StatusIcon className={`w-6 h-6 ${statusColor}`} />
+          <span className={`text-lg font-bold ${statusColor}`}>
+            {isFaultDetected ? 'FAULT DETECTED' : 'FAULT INJECTED'}
+          </span>
         </div>
-        <Icon className="w-8 h-8 opacity-50" />
+        <div className="flex items-center space-x-6 text-sm">
+          {pred && (
+            <>
+              <div>
+                <span className="text-slate-400">Type: </span>
+                <span className="text-white font-mono font-bold">{pred.fault_type}</span>
+              </div>
+              <div>
+                <span className="text-slate-400">Phase: </span>
+                <span className="text-white font-mono font-bold">{pred.fault_phase}</span>
+              </div>
+              <div>
+                <span className="text-slate-400">Confidence: </span>
+                <span className="text-white font-mono font-bold">
+                  {(pred.detection_confidence * 100).toFixed(1)}%
+                </span>
+              </div>
+              <div>
+                <span className="text-slate-400">Location: </span>
+                <span className="text-white font-mono font-bold">{pred.fault_location_bus}</span>
+              </div>
+            </>
+          )}
+          {af && !pred && (
+            <div>
+              <span className="text-slate-400">Bus: </span>
+              <span className="text-white font-mono">{af.bus}</span>
+              <span className="text-slate-400 ml-2">Type: </span>
+              <span className="text-white font-mono">{af.fault_type}</span>
+            </div>
+          )}
+          {fault?.detection_latency_steps != null && (
+            <div>
+              <span className="text-slate-400">Latency: </span>
+              <span className="text-white font-mono font-bold">
+                {fault.detection_latency_steps} step{fault.detection_latency_steps !== 1 ? 's' : ''}
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Fault Probability Cards ──────────────────────────────────
+function FaultProbCards({ fault }: { fault?: FaultPayload | null }) {
+  const pred = fault?.prediction;
+
+  if (!pred) {
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+        {['Type Probabilities', 'Phase Probabilities', 'Top-5 Location', 'Detection Latency'].map((title) => (
+          <div key={title} className="card py-3 px-4">
+            <h4 className="text-xs text-slate-400 mb-2">{title}</h4>
+            <p className="text-slate-500 text-sm">No prediction data</p>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  const typeSorted = Object.entries(pred.type_probabilities).sort((a, b) => b[1] - a[1]);
+  const phaseSorted = Object.entries(pred.phase_probabilities).sort((a, b) => b[1] - a[1]);
+  const locSorted = Object.entries(pred.location_probabilities)
+    .filter(([k]) => k !== 'no_fault')
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5);
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+      {/* Type Probabilities */}
+      <div className="card py-3 px-4">
+        <h4 className="text-xs text-slate-400 mb-2">Fault Type</h4>
+        <div className="space-y-1.5">
+          {typeSorted.map(([label, prob]) => (
+            <div key={label} className="flex items-center text-xs">
+              <span className="w-14 text-slate-300 font-mono">{label}</span>
+              <div className="flex-1 h-3 bg-slate-700 rounded-full mx-2 overflow-hidden">
+                <div
+                  className="h-full bg-amber-500 rounded-full transition-all"
+                  style={{ width: `${prob * 100}%` }}
+                />
+              </div>
+              <span className="w-12 text-right text-slate-300">{(prob * 100).toFixed(1)}%</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Phase Probabilities */}
+      <div className="card py-3 px-4">
+        <h4 className="text-xs text-slate-400 mb-2">Fault Phase</h4>
+        <div className="space-y-1.5">
+          {phaseSorted.map(([label, prob]) => (
+            <div key={label} className="flex items-center text-xs">
+              <span className="w-14 text-slate-300 font-mono">{label}</span>
+              <div className="flex-1 h-3 bg-slate-700 rounded-full mx-2 overflow-hidden">
+                <div
+                  className="h-full bg-blue-500 rounded-full transition-all"
+                  style={{ width: `${prob * 100}%` }}
+                />
+              </div>
+              <span className="w-12 text-right text-slate-300">{(prob * 100).toFixed(1)}%</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Top-5 Location */}
+      <div className="card py-3 px-4">
+        <h4 className="text-xs text-slate-400 mb-2">Top-5 Location</h4>
+        <div className="space-y-1.5">
+          {locSorted.map(([bus, prob]) => (
+            <div key={bus} className="flex items-center text-xs">
+              <span className="w-24 text-slate-300 font-mono truncate" title={bus}>{bus}</span>
+              <div className="flex-1 h-3 bg-slate-700 rounded-full mx-2 overflow-hidden">
+                <div
+                  className="h-full bg-red-500 rounded-full transition-all"
+                  style={{ width: `${prob * 100}%` }}
+                />
+              </div>
+              <span className="w-12 text-right text-slate-300">{(prob * 100).toFixed(1)}%</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Detection Latency */}
+      <div className="card py-3 px-4">
+        <h4 className="text-xs text-slate-400 mb-2">Detection Latency</h4>
+        <div className="flex flex-col items-center justify-center h-full min-h-[80px]">
+          <span className="text-4xl font-bold text-white">
+            {fault?.detection_latency_steps ?? '\u2014'}
+          </span>
+          <span className="text-xs text-slate-400 mt-1">
+            {fault?.detection_latency_steps != null ? 'simulation steps' : 'No data'}
+          </span>
+          {pred.step_injected != null && pred.step_detected != null && (
+            <span className="text-[10px] text-slate-500 mt-1">
+              Injected: step {pred.step_injected} → Detected: step {pred.step_detected}
+            </span>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -193,14 +353,11 @@ function buildFlowGraph(
 
   // Determine day/night and solar activity from live metrics
   const currentHour = liveMetrics?.hour ?? null;
-  const isDaytime = currentHour !== null && currentHour >= 6 && currentHour < 18;
   const solarActive = liveMetrics ? liveMetrics.total_solar_kw > 0 : false;
 
   // Create bus nodes (SVG icons)
   for (const node of topology.nodes) {
     const pos = posMap.get(node.id) ?? { x: 0, y: 0 };
-    const busData = gridState?.buses?.[node.id];
-
     // Fault heat map: only active when is_fault=true (Q10)
     const isFaultActive = faultPayload?.prediction?.is_fault === true;
     const locProbs = faultPayload?.prediction?.location_probabilities;
@@ -213,8 +370,6 @@ function buildFlowGraph(
 
     const nameLower = node.label.toLowerCase();
     const isSolar = nameLower.includes('pv') || nameLower.includes('solar');
-    const isWind = nameLower.includes('wind');
-    const isGenerator = nameLower.includes('gen') || nameLower.includes('ujps');
 
     // Show live output for generation nodes during playback
     let liveOutputKw: number | null = null;
@@ -334,6 +489,168 @@ function buildFlowGraph(
   }
 
   return { nodes, edges };
+}
+
+// ─── Fault Injection Panel ────────────────────────────────────
+function FaultInjectionPanel({
+  topology,
+  fault,
+  simRunning,
+  simPaused,
+}: {
+  topology: Topology | null;
+  fault?: FaultPayload | null;
+  simRunning: boolean;
+  simPaused: boolean;
+}) {
+  const [bus, setBus] = useState('');
+  const [faultType, setFaultType] = useState('LG');
+  const [phase, setPhase] = useState('A');
+  const [resistance, setResistance] = useState(1.0);
+  const [status, setStatus] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const busNames = useMemo(() => {
+    if (!topology) return [];
+    return topology.nodes.map(n => n.id).sort();
+  }, [topology]);
+
+  // Reset phase when fault type changes
+  useEffect(() => {
+    const validPhases = FAULT_TYPE_PHASES[faultType] ?? [];
+    if (!validPhases.includes(phase)) {
+      setPhase(validPhases[0] ?? 'A');
+    }
+  }, [faultType]);
+
+  const canInject = simRunning && !simPaused && !fault?.has_active_fault && bus !== '' && !submitting;
+  const canClear = fault?.has_active_fault === true && !submitting;
+
+  const handleInject = async () => {
+    setSubmitting(true);
+    setStatus(null);
+    try {
+      const res = await api.injectFault(bus, faultType, phase, resistance);
+      setStatus({ type: 'success', msg: res.message });
+    } catch (err: any) {
+      setStatus({ type: 'error', msg: err.message ?? 'Injection failed' });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleClear = async () => {
+    setSubmitting(true);
+    setStatus(null);
+    try {
+      const res = await api.clearFault();
+      setStatus({ type: 'success', msg: res.message });
+    } catch (err: any) {
+      setStatus({ type: 'error', msg: err.message ?? 'Clear failed' });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="card border-amber-700/50">
+      <h3 className="font-semibold text-white mb-3 text-sm flex items-center">
+        <Zap className="w-4 h-4 mr-1.5 text-amber-400" />
+        Fault Injection
+      </h3>
+
+      <div className="space-y-2">
+        {/* Bus selector */}
+        <div>
+          <label className="text-[10px] text-slate-400 block mb-0.5">Target Bus</label>
+          <select
+            value={bus}
+            onChange={(e) => setBus(e.target.value)}
+            className="w-full bg-slate-700 text-white text-xs rounded px-2 py-1.5 border border-slate-600"
+          >
+            <option value="">Select bus...</option>
+            {busNames.map((b) => (
+              <option key={b} value={b}>{b}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Fault type */}
+        <div>
+          <label className="text-[10px] text-slate-400 block mb-0.5">Fault Type</label>
+          <select
+            value={faultType}
+            onChange={(e) => setFaultType(e.target.value)}
+            className="w-full bg-slate-700 text-white text-xs rounded px-2 py-1.5 border border-slate-600"
+          >
+            {Object.keys(FAULT_TYPE_PHASES).map((ft) => (
+              <option key={ft} value={ft}>{ft}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Phase */}
+        <div>
+          <label className="text-[10px] text-slate-400 block mb-0.5">Phase</label>
+          <select
+            value={phase}
+            onChange={(e) => setPhase(e.target.value)}
+            className="w-full bg-slate-700 text-white text-xs rounded px-2 py-1.5 border border-slate-600"
+          >
+            {(FAULT_TYPE_PHASES[faultType] ?? []).map((p) => (
+              <option key={p} value={p}>{p}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Resistance */}
+        <div>
+          <label className="text-[10px] text-slate-400 block mb-0.5">Resistance (Ω)</label>
+          <input
+            type="number"
+            value={resistance}
+            onChange={(e) => setResistance(Number(e.target.value))}
+            min={0.0001}
+            max={1000}
+            step={0.1}
+            className="w-full bg-slate-700 text-white text-xs rounded px-2 py-1.5 border border-slate-600"
+          />
+        </div>
+
+        {/* Inject / Clear buttons */}
+        <div className="flex space-x-2 pt-1">
+          <button
+            onClick={handleInject}
+            disabled={!canInject}
+            className="flex-1 bg-amber-600 hover:bg-amber-500 disabled:bg-slate-600 disabled:text-slate-400
+                       text-white text-xs font-medium py-1.5 rounded transition-colors"
+          >
+            {submitting ? '...' : 'Inject'}
+          </button>
+          <button
+            onClick={handleClear}
+            disabled={!canClear}
+            className="flex-1 bg-red-600 hover:bg-red-500 disabled:bg-slate-600 disabled:text-slate-400
+                       text-white text-xs font-medium py-1.5 rounded transition-colors"
+          >
+            Clear
+          </button>
+        </div>
+
+        {/* Status message */}
+        {status && (
+          <p className={`text-[10px] ${status.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>
+            {status.msg}
+          </p>
+        )}
+
+        {/* Hint when sim not running */}
+        {!simRunning && (
+          <p className="text-[10px] text-slate-500">Start a simulation to enable fault injection</p>
+        )}
+      </div>
+    </div>
+  );
 }
 
 // ─── Side Panel Components ─────────────────────────────────────
@@ -470,7 +787,7 @@ function NetworkStats({ topology }: { topology: Topology | null }) {
 export default function Dashboard() {
   const {
     gridState,
-    pipelineSteps,
+    simulationStatus,
     lastSimDate,
     topology,
     setTopology,
@@ -482,7 +799,6 @@ export default function Dashboard() {
     playbackStepIndex,
     playbackDayIndex,
     playbackTotalDays,
-    playbackVisibleSteps,
     liveMetrics,
   } = useGridStore();
 
@@ -581,53 +897,10 @@ export default function Dashboard() {
     rfInstance?.fitView({ padding: 0.2 });
   }, [rfInstance]);
 
-  // ─── Derive stat card values from live metrics OR final grid state ───
+  // ─── Derive display values from live metrics OR final grid state ───
   const currentHourLabel = liveMetrics
     ? `${String(Math.floor(liveMetrics.hour)).padStart(2, '0')}:${String(Math.round((liveMetrics.hour % 1) * 60)).padStart(2, '0')}`
     : null;
-
-  // During playback: use liveMetrics; after playback: use gridState
-  const displayLoad = isActive && liveMetrics
-    ? (liveMetrics.total_power_kw / 1000).toFixed(2) + ' MW'
-    : gridState?.summary.total_load_kw != null
-      ? gridState.summary.total_load_kw.toFixed(1)
-      : '\u2014';
-  const displayLoadUnit = isActive && liveMetrics ? '' : 'kW';
-
-  const displaySolar = isActive && liveMetrics
-    ? liveMetrics.total_solar_kw.toFixed(1)
-    : gridState?.summary.total_solar_kw?.toFixed(1) ?? '\u2014';
-
-  const displayWind = isActive && liveMetrics
-    ? liveMetrics.total_wind_kw.toFixed(1)
-    : (gridState?.summary as any)?.total_wind_kw?.toFixed(1) ?? '\u2014';
-
-  const displayGeneration = isActive && liveMetrics
-    ? (liveMetrics.total_generation_kw / 1000).toFixed(2) + ' MW'
-    : gridState?.summary.total_generation_kw != null
-      ? (gridState.summary.total_generation_kw / 1000).toFixed(2) + ' MW'
-      : '\u2014';
-  const displayGenerationUnit = '';
-
-  const displayLosses = isActive && liveMetrics
-    ? liveMetrics.total_losses_kw.toFixed(1)
-    : gridState?.summary.total_losses_kw?.toFixed(2) ?? '\u2014';
-
-  const visibleSteps = isActive ? playbackVisibleSteps : pipelineSteps;
-  const convergedCount = visibleSteps.filter(s => s.converged).length;
-  const convergedLabel = visibleSteps.length > 0
-    ? `${convergedCount}/${visibleSteps.length}`
-    : '\u2014';
-
-  const displayViolations = isActive && liveMetrics
-    ? liveMetrics.voltage_violations
-    : gridState?.summary.num_voltage_violations ?? 0;
-
-  const convergedColor = isActive && liveMetrics
-    ? (liveMetrics.converged ? 'green' : 'amber')
-    : (gridState?.converged ? 'green' : 'amber');
-
-  const violationColor = displayViolations > 0 ? 'red' : 'green';
 
   return (
     <div className="space-y-4 h-full flex flex-col">
@@ -678,90 +951,11 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Stats Grid - 7 cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
-        <StatCard
-          title="Total Load"
-          value={displayLoad}
-          unit={displayLoadUnit}
-          icon={Activity}
-          color="blue"
-        />
-        <StatCard
-          title="Total Generation"
-          value={displayGeneration}
-          unit={displayGenerationUnit}
-          icon={Zap}
-          color="green"
-        />
-        <StatCard
-          title="Solar Generation"
-          value={displaySolar}
-          unit="kW"
-          icon={Sun}
-          color={isActive && liveMetrics && liveMetrics.total_solar_kw > 0 ? 'green' : 'amber'}
-        />
-        <StatCard
-          title="Wind Generation"
-          value={displayWind}
-          unit="kW"
-          icon={Wind}
-          color={isActive && liveMetrics && liveMetrics.total_wind_kw > 0 ? 'green' : 'blue'}
-        />
-        <StatCard
-          title="System Losses"
-          value={displayLosses}
-          unit="kW"
-          icon={Thermometer}
-          color="amber"
-        />
-        <StatCard
-          title="Convergence"
-          value={convergedLabel}
-          icon={CheckCircle}
-          color={convergedColor}
-        />
-        <StatCard
-          title="Violations"
-          value={displayViolations}
-          icon={AlertTriangle}
-          color={violationColor}
-        />
-      </div>
+      {/* Fault Detection Banner */}
+      <FaultBanner fault={gridState?.fault} />
 
-      {/* Feeder-wise Net Load Panel */}
-      {isActive && liveMetrics && (
-        <div className="card py-2 px-4">
-          <h3 className="text-sm font-semibold text-white mb-2">Feeder-wise Net Load</h3>
-          <div className="grid grid-cols-7 gap-2">
-            {FEEDER_IDS.map((fid) => {
-              const key = `power_${fid}_kw` as keyof LiveMetrics;
-              const val = liveMetrics[key] as number | undefined;
-              const isReverse = val != null && val < 0;
-              return (
-                <div
-                  key={fid}
-                  className={`rounded-lg px-3 py-1.5 text-center border ${
-                    isReverse
-                      ? 'bg-orange-900/40 border-orange-600'
-                      : 'bg-slate-800 border-slate-600'
-                  }`}
-                >
-                  <div className="text-xs text-slate-400">{fid}</div>
-                  <div className={`text-sm font-mono font-bold ${
-                    isReverse ? 'text-orange-400' : 'text-white'
-                  }`}>
-                    {val != null ? `${(val / 1000).toFixed(2)}` : '\u2014'}
-                  </div>
-                  <div className="text-[10px] text-slate-500">
-                    {isReverse ? 'MW (export)' : 'MW'}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
+      {/* Fault Probability Cards */}
+      <FaultProbCards fault={gridState?.fault} />
 
       {/* Main Grid Topology Viewer */}
       <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-4 gap-4">
@@ -843,6 +1037,12 @@ export default function Dashboard() {
 
         {/* Side Panel */}
         <div className="space-y-3 overflow-y-auto">
+          <FaultInjectionPanel
+            topology={topology}
+            fault={gridState?.fault}
+            simRunning={simulationStatus?.running ?? false}
+            simPaused={simulationStatus?.paused ?? false}
+          />
           <ConnectionTypesLegend />
           <SelectedNodePanel node={selectedNode} />
           <NetworkStats topology={topology} />

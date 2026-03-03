@@ -5,7 +5,6 @@ import {
   Clock,
   Zap,
   RefreshCw,
-  CheckCircle,
 } from 'lucide-react';
 import {
   LineChart,
