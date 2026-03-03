@@ -128,3 +128,8 @@ htmlcov/
 *.pth
 models/trained/
 
+
+# Netload datasets (raw + processed)
+data/raw/netload/
+data/processed/netload/
+
