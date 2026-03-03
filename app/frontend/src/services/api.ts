@@ -70,13 +70,6 @@ class ApiService {
     });
   }
 
-  async injectFault(bus: string, faultType: string = '3phase', resistance: number = 0.0001) {
-    return this.request('/grid/inject-fault', {
-      method: 'POST',
-      body: JSON.stringify({ bus, fault_type: faultType, resistance }),
-    });
-  }
-
   async getCircuitInfo() {
     return this.request('/grid/info');
   }
@@ -167,37 +160,52 @@ class ApiService {
 
   // ============== Diagnostics API ==============
 
-  async detectFault(useLiveData: boolean = true) {
-    return this.request('/diagnostics/detect', {
+  async injectFault(bus: string, faultType: string, phase: string, resistance: number = 1.0) {
+    return this.request<{ success: boolean; message: string }>('/diagnostics/inject-fault', {
       method: 'POST',
-      body: JSON.stringify({ use_live_data: useLiveData }),
+      body: JSON.stringify({ bus, fault_type: faultType, phase, resistance }),
     });
   }
 
-  async getSelfHealingStatus() {
-    return this.request('/diagnostics/self-healing/status');
-  }
-
-  async triggerSelfHealing(bus: string, faultType: string = 'LG') {
-    return this.request(`/diagnostics/self-healing/trigger?bus=${bus}&fault_type=${faultType}`, {
+  async clearFault() {
+    return this.request<{ success: boolean; message: string }>('/diagnostics/clear-fault', {
       method: 'POST',
     });
   }
 
-  async detectHIF() {
-    return this.request('/diagnostics/hif-detection');
+  async getFaultStatus() {
+    return this.request<{
+      has_active_fault: boolean;
+      active_fault?: { bus: string; fault_type: string; phase: string; resistance: number; step_injected: number };
+      latest_prediction?: Record<string, unknown>;
+      detection_latency_steps?: number;
+    }>('/diagnostics/fault-status');
   }
 
-  async getFaultHistory(limit: number = 50) {
-    return this.request(`/diagnostics/fault-history?limit=${limit}`);
+  async getFaultHistory() {
+    return this.request<Array<Record<string, unknown>>>('/diagnostics/fault-history');
   }
 
-  async getAgentStatus() {
-    return this.request('/diagnostics/agent-status');
+  async getFaultWaveform() {
+    return this.request<{
+      voltage_seq: number[][][];
+      current_seq: number[][][];
+      bus_names: string[];
+      branch_names: string[];
+      total_cycles: number;
+    }>('/diagnostics/fault-waveform');
   }
 
-  async getGridGraph() {
-    return this.request('/diagnostics/grid-graph');
+  async getModelStatus() {
+    return this.request<{ loaded: boolean; n_buses: number | null; n_features_cnn: number | null }>(
+      '/diagnostics/model-status'
+    );
+  }
+
+  async loadFaultModel() {
+    return this.request<{ success: boolean; message: string }>('/diagnostics/load-model', {
+      method: 'POST',
+    });
   }
 
   // ============== Pipeline Simulation API ==============
