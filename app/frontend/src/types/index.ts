@@ -164,32 +164,6 @@ export interface ForecastResponse {
   model_info?: Record<string, unknown>;
 }
 
-// Diagnostics Types
-export interface DiagnosticResult {
-  fault_detected: boolean;
-  fault_type?: string;
-  fault_phase?: string;
-  fault_location?: string;
-  confidence: number;
-  timestamp: number;
-}
-
-export interface FaultEvent {
-  fault_id: string;
-  location: string;
-  fault_type: string;
-  timestamp: number;
-  severity: string;
-}
-
-export interface RestorationAction {
-  action_id: string;
-  action_type: string;
-  target_element: string;
-  timestamp: number;
-  agent_id?: string;
-}
-
 // WebSocket Message Types
 export interface WSMessage {
   type: 'state_update' | 'status' | 'error' | 'info' | 'pong' | 'response' | 'history';
