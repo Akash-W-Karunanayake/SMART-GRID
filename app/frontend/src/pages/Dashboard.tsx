@@ -38,7 +38,6 @@ const FAULT_TYPE_PHASES: Record<string, string[]> = {
   LL: ['AB', 'BC', 'CA'],
   LLG: ['ABG', 'BCG', 'CAG'],
   LLL: ['ABC'],
-  HIF: ['A', 'B', 'C'],
 };
 
 // ─── Fault Detection Banner ───────────────────────────────────
@@ -54,7 +53,7 @@ function FaultBanner({ fault }: { fault?: FaultPayload | null }) {
           <Activity className="w-6 h-6 text-slate-500" />
           <div>
             <span className="text-lg font-bold text-slate-400">IDLE</span>
-            <span className="text-sm text-slate-500 ml-3">Inject a fault to run diagnostics</span>
+            <span className="text-sm text-slate-500 ml-3">Monitoring will begin when simulation starts</span>
           </div>
         </div>
       </div>
@@ -141,119 +140,37 @@ function FaultBanner({ fault }: { fault?: FaultPayload | null }) {
             <span className="text-slate-400">Location: </span>
             <span className="text-white font-mono font-bold">{pred!.fault_location_bus}</span>
           </div>
-          {fault?.detection_latency_steps != null && (
-            <div>
-              <span className="text-slate-400">Latency: </span>
-              <span className="text-white font-mono font-bold">
-                {fault.detection_latency_steps} step{fault.detection_latency_steps !== 1 ? 's' : ''}
-              </span>
-            </div>
-          )}
         </div>
       </div>
     </div>
   );
 }
 
-// ─── Fault Probability Cards ──────────────────────────────────
-function FaultProbCards({ fault }: { fault?: FaultPayload | null }) {
+// ─── Latest Prediction Cards (shown only when fault detected) ─
+function LatestPredictionCards({ fault }: { fault?: FaultPayload | null }) {
   const pred = fault?.prediction;
-
-  if (!pred) {
-    return (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-        {['Type Probabilities', 'Phase Probabilities', 'Top-5 Location', 'Detection Latency'].map((title) => (
-          <div key={title} className="card py-3 px-4">
-            <h4 className="text-xs text-slate-400 mb-2">{title}</h4>
-            <p className="text-slate-500 text-sm">No prediction data</p>
-          </div>
-        ))}
-      </div>
-    );
-  }
-
-  const typeSorted = Object.entries(pred.type_probabilities).sort((a, b) => b[1] - a[1]);
-  const phaseSorted = Object.entries(pred.phase_probabilities).sort((a, b) => b[1] - a[1]);
-  const locSorted = Object.entries(pred.location_probabilities)
-    .filter(([k]) => k !== 'no_fault')
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5);
+  if (!pred || !pred.is_fault) return null;
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-      {/* Type Probabilities */}
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
       <div className="card py-3 px-4">
-        <h4 className="text-xs text-slate-400 mb-2">Fault Type</h4>
-        <div className="space-y-1.5">
-          {typeSorted.map(([label, prob]) => (
-            <div key={label} className="flex items-center text-xs">
-              <span className="w-14 text-slate-300 font-mono">{label}</span>
-              <div className="flex-1 h-3 bg-slate-700 rounded-full mx-2 overflow-hidden">
-                <div
-                  className="h-full bg-amber-500 rounded-full transition-all"
-                  style={{ width: `${prob * 100}%` }}
-                />
-              </div>
-              <span className="w-12 text-right text-slate-300">{(prob * 100).toFixed(1)}%</span>
-            </div>
-          ))}
-        </div>
+        <p className="text-xs text-slate-400">Detection</p>
+        <p className="text-xl font-bold text-red-400">FAULT</p>
+        <p className="text-xs text-slate-500">{(pred.detection_confidence * 100).toFixed(1)}% confidence</p>
       </div>
-
-      {/* Phase Probabilities */}
       <div className="card py-3 px-4">
-        <h4 className="text-xs text-slate-400 mb-2">Fault Phase</h4>
-        <div className="space-y-1.5">
-          {phaseSorted.map(([label, prob]) => (
-            <div key={label} className="flex items-center text-xs">
-              <span className="w-14 text-slate-300 font-mono">{label}</span>
-              <div className="flex-1 h-3 bg-slate-700 rounded-full mx-2 overflow-hidden">
-                <div
-                  className="h-full bg-blue-500 rounded-full transition-all"
-                  style={{ width: `${prob * 100}%` }}
-                />
-              </div>
-              <span className="w-12 text-right text-slate-300">{(prob * 100).toFixed(1)}%</span>
-            </div>
-          ))}
-        </div>
+        <p className="text-xs text-slate-400">Fault Type</p>
+        <p className="text-xl font-bold text-amber-400">{pred.fault_type}</p>
       </div>
-
-      {/* Top-5 Location */}
       <div className="card py-3 px-4">
-        <h4 className="text-xs text-slate-400 mb-2">Top-5 Location</h4>
-        <div className="space-y-1.5">
-          {locSorted.map(([bus, prob]) => (
-            <div key={bus} className="flex items-center text-xs">
-              <span className="w-24 text-slate-300 font-mono truncate" title={bus}>{bus}</span>
-              <div className="flex-1 h-3 bg-slate-700 rounded-full mx-2 overflow-hidden">
-                <div
-                  className="h-full bg-red-500 rounded-full transition-all"
-                  style={{ width: `${prob * 100}%` }}
-                />
-              </div>
-              <span className="w-12 text-right text-slate-300">{(prob * 100).toFixed(1)}%</span>
-            </div>
-          ))}
-        </div>
+        <p className="text-xs text-slate-400">Phase</p>
+        <p className="text-xl font-bold text-blue-400">{pred.fault_phase}</p>
       </div>
-
-      {/* Detection Latency */}
       <div className="card py-3 px-4">
-        <h4 className="text-xs text-slate-400 mb-2">Detection Latency</h4>
-        <div className="flex flex-col items-center justify-center h-full min-h-[80px]">
-          <span className="text-4xl font-bold text-white">
-            {fault?.detection_latency_steps ?? '\u2014'}
-          </span>
-          <span className="text-xs text-slate-400 mt-1">
-            {fault?.detection_latency_steps != null ? 'simulation steps' : 'No data'}
-          </span>
-          {pred.step_injected != null && pred.step_detected != null && (
-            <span className="text-[10px] text-slate-500 mt-1">
-              Injected: step {pred.step_injected} → Detected: step {pred.step_detected}
-            </span>
-          )}
-        </div>
+        <p className="text-xs text-slate-400">Location</p>
+        <p className="text-lg font-bold text-white truncate" title={pred.fault_location_bus}>
+          {pred.fault_location_bus}
+        </p>
       </div>
     </div>
   );
@@ -340,9 +257,6 @@ const PV_CAPACITY_KW: Record<string, number> = {
   pv_f12_res2: 2000,
 };
 const TOTAL_PV_CAPACITY_KW = 47320;
-
-// ─── Feeder IDs for per-feeder power mapping ───────────────────
-const FEEDER_IDS = ['F06', 'F07', 'F08', 'F09', 'F10', 'F11', 'F12'] as const;
 
 // ─── Build ReactFlow graph with radial layout ──────────────────
 function buildFlowGraph(
@@ -472,38 +386,19 @@ function buildFlowGraph(
     });
   }
 
-  // Create line edges with reverse flow detection
-  // Edge colors: green=normal import, orange=reverse flow (export), gray=inactive, red=overloaded
+  // Create line edges
   for (const edge of lineEdges) {
     const lineData = gridState?.lines?.[edge.label];
     const isActive = lineData?.enabled !== false;
-
-    // Detect reverse power flow: check if this edge belongs to a feeder with negative power
-    let isReverseFlow = false;
-    if (isPlaybackActive && liveMetrics && isActive) {
-      const edgeLabelLower = edge.label.toLowerCase();
-      for (const fid of FEEDER_IDS) {
-        if (edgeLabelLower.includes(fid.toLowerCase())) {
-          const feederKey = `power_${fid}_kw` as keyof LiveMetrics;
-          const feederPower = liveMetrics[feederKey] as number | undefined;
-          if (feederPower != null && feederPower < 0) {
-            isReverseFlow = true;
-          }
-          break;
-        }
-      }
-    }
-
-    const strokeColor = !isActive ? '#6b7280' : isReverseFlow ? '#f97316' : '#22c55e';
-    const strokeWidth = isReverseFlow ? 3 : 2;
+    const strokeColor = isActive ? '#22c55e' : '#6b7280';
 
     edges.push({
       id: edge.id,
-      source: isReverseFlow ? edge.target : edge.source,
-      target: isReverseFlow ? edge.source : edge.target,
+      source: edge.source,
+      target: edge.target,
       type: 'smoothstep',
       animated: isActive,
-      style: { stroke: strokeColor, strokeWidth },
+      style: { stroke: strokeColor, strokeWidth: 2 },
       markerEnd: {
         type: MarkerType.ArrowClosed,
         color: strokeColor,
@@ -532,21 +427,30 @@ function FaultInjectionPanel({
   const [bus, setBus] = useState('');
   const [faultType, setFaultType] = useState('LG');
   const [phase, setPhase] = useState('A');
-  const [resistance, setResistance] = useState(1.0);
+  const [resistance, setResistance] = useState(1);
   const [status, setStatus] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [modelReady, setModelReady] = useState(false);
 
   const busNames = useMemo(() => {
     if (!topology) return [];
-    return topology.nodes.map(n => n.id).sort();
+    return topology.nodes
+      .map(n => n.id)
+      .filter(id => {
+        const lower = id.toLowerCase();
+        // Allow 33kV buses and feeder nodes (f05-f12)
+        if (lower.startsWith('bus_33kv')) return true;
+        if (/^f(0[5-9]|1[0-2])_node/.test(lower)) return true;
+        return false;
+      })
+      .sort();
   }, [topology]);
 
   // Poll model status to know if injection is available
   useEffect(() => {
     const check = () => {
       api.getModelStatus()
-        .then((s) => setModelReady(s.can_inject ?? false))
+        .then((s) => setModelReady(s.dss_model_loaded ?? false))
         .catch(() => setModelReady(false));
     };
     check();
@@ -666,15 +570,15 @@ function FaultInjectionPanel({
         {/* Resistance */}
         <div>
           <label className="text-[10px] text-slate-400 block mb-0.5">Resistance (Ω)</label>
-          <input
-            type="number"
+          <select
             value={resistance}
             onChange={(e) => setResistance(Number(e.target.value))}
-            min={0.0001}
-            max={1000}
-            step={0.1}
             className="w-full bg-slate-700 text-white text-xs rounded px-2 py-1.5 border border-slate-600"
-          />
+          >
+            {Array.from({ length: 10 }, (_, i) => i + 1).map((r) => (
+              <option key={r} value={r}>{r}</option>
+            ))}
+          </select>
         </div>
 
         {/* Inject / Clear buttons */}
@@ -725,10 +629,6 @@ function ConnectionTypesLegend() {
           <span className="text-slate-300">Active Line</span>
         </div>
         <div className="flex items-center">
-          <div className="w-6 h-0.5 mr-2" style={{ backgroundColor: '#f97316' }} />
-          <span className="text-slate-300">Reverse Flow (export)</span>
-        </div>
-        <div className="flex items-center">
           <TransformerSvg size={16} status="normal" className="mr-2" />
           <span className="text-slate-300">Transformer</span>
         </div>
@@ -756,11 +656,10 @@ function SelectedNodePanel({ node }: { node: any }) {
         {node.voltage_pu && (
           <div className="flex justify-between">
             <span className="text-slate-400">Voltage (pu):</span>
-            <span className={`font-medium ${
-              node.voltage_pu[0] < 0.95 ? 'text-amber-400'
+            <span className={`font-medium ${node.voltage_pu[0] < 0.95 ? 'text-amber-400'
                 : node.voltage_pu[0] > 1.05 ? 'text-red-400'
-                : 'text-green-400'
-            }`}>
+                  : 'text-green-400'
+              }`}>
               {node.voltage_pu[0]?.toFixed(4)}
             </span>
           </div>
@@ -935,10 +834,10 @@ export default function Dashboard() {
   const toggleFullscreen = useCallback(() => {
     if (!gridContainerRef.current) return;
     if (!isFullscreen) {
-      gridContainerRef.current.requestFullscreen?.().catch(() => {});
+      gridContainerRef.current.requestFullscreen?.().catch(() => { });
       setIsFullscreen(true);
     } else {
-      document.exitFullscreen?.().catch(() => {});
+      document.exitFullscreen?.().catch(() => { });
       setIsFullscreen(false);
     }
   }, [isFullscreen]);
@@ -1013,17 +912,16 @@ export default function Dashboard() {
       {/* Fault Detection Banner */}
       <FaultBanner fault={gridState?.fault} />
 
-      {/* Fault Probability Cards */}
-      <FaultProbCards fault={gridState?.fault} />
+      {/* Latest Prediction Cards (fault only) */}
+      <LatestPredictionCards fault={gridState?.fault} />
 
       {/* Main Grid Topology Viewer */}
       <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-4 gap-4">
         {/* Topology View */}
         <div
           ref={gridContainerRef}
-          className={`lg:col-span-3 card p-0 overflow-hidden relative ${
-            isFullscreen ? 'fullscreen-grid' : ''
-          }`}
+          className={`lg:col-span-3 card p-0 overflow-hidden relative ${isFullscreen ? 'fullscreen-grid' : ''
+            }`}
         >
           {/* Toolbar */}
           <div className="absolute top-2 left-2 z-10 flex items-center space-x-2">
