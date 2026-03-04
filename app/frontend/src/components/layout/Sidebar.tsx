@@ -7,13 +7,11 @@ import {
   BarChart3,
   Settings,
   Zap,
-  Play,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 
 const navigation = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
-  { name: 'Simulation', href: '/simulation', icon: Play, badge: 'OpenDSS' },
   { name: 'Self-Healing', href: '/self-healing', icon: Shield, badge: 'MARL+GNN' },
   { name: 'Forecasting', href: '/forecasting', icon: TrendingUp, badge: 'ML' },
   { name: 'Diagnostics', href: '/diagnostics', icon: AlertTriangle, badge: 'CNN+GNN' },

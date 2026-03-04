@@ -30,7 +30,7 @@ function dateRange(start: string, end: string): string[] {
 }
 
 /** Shape a raw backend step object into our PipelineStep interface. */
-function toStep(s: any): PipelineStep {
+function toStep(s: any): PipelineStep & { prediction?: any } {
   return {
     hour: s.hour ?? 0,
     total_power_kw: s.total_power_kw ?? 0,
@@ -51,6 +51,7 @@ function toStep(s: any): PipelineStep {
     power_F10_kw: s.power_F10_kw,
     power_F11_kw: s.power_F11_kw,
     power_F12_kw: s.power_F12_kw,
+    prediction: s.prediction ?? undefined,
   };
 }
 
@@ -92,9 +93,30 @@ export function useSimulationPlayback() {
     }
 
     // Advance one step
-    const step = steps[idx];
+    const step = steps[idx] as PipelineStep & { prediction?: any };
     state.advancePlaybackStep(step);
     indexRef.current = idx + 1;
+
+    // Forward per-step prediction to gridState.fault so Dashboard banner updates.
+    // When user has injected a fault (has_active_fault), preserve the real-time
+    // prediction from the backend — don't overwrite it with pre-computed batch data.
+    if (state.gridState) {
+      const existingFault = state.gridState.fault;
+      const hasActiveFault = existingFault?.has_active_fault === true;
+
+      if (!hasActiveFault && step.prediction) {
+        // No active fault: use pre-computed step prediction (continuous monitoring)
+        const faultPayload = {
+          has_active_fault: false,
+          active_fault: existingFault?.active_fault,
+          prediction: step.prediction,
+          detection_latency_steps: existingFault?.detection_latency_steps,
+        };
+        state.setGridState({ ...state.gridState, fault: faultPayload as any });
+      }
+      // When has_active_fault is true, leave gridState.fault untouched —
+      // the real prediction came from the backend via refreshFaultState().
+    }
 
     // Schedule next tick
     timerRef.current = setTimeout(tick, state.playbackSpeed);
@@ -211,9 +233,27 @@ export function useSimulationPlayback() {
       return;
     }
 
-    const step = steps[idx];
+    const step = steps[idx] as PipelineStep & { prediction?: any };
     state.advancePlaybackStep(step);
     indexRef.current = idx + 1;
+
+    // Forward per-step prediction to gridState.fault so Dashboard banner updates.
+    // When user has injected a fault (has_active_fault), preserve the real-time
+    // prediction from the backend — don't overwrite it with pre-computed batch data.
+    if (state.gridState) {
+      const existingFault = state.gridState.fault;
+      const hasActiveFault = existingFault?.has_active_fault === true;
+
+      if (!hasActiveFault && step.prediction) {
+        const faultPayload = {
+          has_active_fault: false,
+          active_fault: existingFault?.active_fault,
+          prediction: step.prediction,
+          detection_latency_steps: existingFault?.detection_latency_steps,
+        };
+        state.setGridState({ ...state.gridState, fault: faultPayload as any });
+      }
+    }
 
     // If not paused, restart the timer
     if (!state.playbackPaused) {

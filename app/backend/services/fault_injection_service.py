@@ -53,7 +53,6 @@ FAULT_TYPE_PHASES = {
     "LL":  ["AB", "BC", "CA"],
     "LLG": ["ABG", "BCG", "CAG"],
     "LLL": ["ABC"],
-    "HIF": ["A", "B", "C"],
 }
 
 
@@ -284,6 +283,61 @@ class FaultInjectionService:
             branch_names=branch_names,
         )
 
+    def capture_grid_snapshot(self) -> SubCycleCapture:
+        """
+        Capture 20 sub-cycle snapshots of the grid in its current state.
+
+        Used for continuous grid monitoring. No fault enable/disable toggling.
+        Whatever the circuit looks like right now (normal or faulted),
+        all 20 cycles capture that exact state. The model decides if
+        something is wrong based on the signal patterns.
+
+        Returns:
+            SubCycleCapture with voltage_seq [20, N_buses, 6] and
+            current_seq [20, N_branches, 6].
+        """
+        bus_names = dss.Circuit.AllBusNames()
+        n_buses = len(bus_names)
+
+        # Collect branch names (lines + transformers as circuit elements)
+        branch_names = []
+        dss.Lines.First()
+        while True:
+            name = dss.Lines.Name()
+            if not name:
+                break
+            branch_names.append(f"Line.{name}")
+            if not dss.Lines.Next():
+                break
+        dss.Transformers.First()
+        while True:
+            name = dss.Transformers.Name()
+            if not name:
+                break
+            branch_names.append(f"Transformer.{name}")
+            if not dss.Transformers.Next():
+                break
+        n_branches = len(branch_names)
+
+        voltage_seq = np.zeros((TOTAL_CYCLES, n_buses, 6), dtype=np.float32)
+        current_seq = np.zeros((TOTAL_CYCLES, n_branches, 6), dtype=np.float32)
+
+        # Switch to snapshot mode for sub-cycle captures
+        dss.Text.Command("Set mode=snapshot")
+
+        # All 20 cycles: capture grid as-is (no fault toggling)
+        for cycle in range(TOTAL_CYCLES):
+            dss.Solution.Solve()
+            self._capture_one_cycle(cycle, bus_names, branch_names,
+                                    voltage_seq, current_seq)
+
+        return SubCycleCapture(
+            voltage_seq=voltage_seq,
+            current_seq=current_seq,
+            bus_names=list(bus_names),
+            branch_names=branch_names,
+        )
+
     def _capture_one_cycle(self, cycle_idx: int,
                            bus_names: list, branch_names: list,
                            voltage_seq: np.ndarray,
@@ -319,8 +373,8 @@ class FaultInjectionService:
                 current_seq[cycle_idx, j, 4] = mag_ang[4]  # Ic_mag
                 current_seq[cycle_idx, j, 5] = mag_ang[5]  # Ic_ang
 
-    def clear_fault(self) -> Dict[str, Any]:
-        """Clear the active fault and record in history."""
+    def clear_fault(self, prediction: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Clear the active fault and record model prediction in history."""
         if not self.has_active_fault:
             return {"success": False, "error": "No active fault to clear."}
 
@@ -330,16 +384,22 @@ class FaultInjectionService:
         fault = self._active_fault
         fault.cleared = True
 
-        # Record in history
-        event = {
-            "bus": fault.bus,
-            "fault_type": fault.fault_type,
-            "phase": fault.phase,
-            "resistance": fault.resistance,
-            "step_injected": fault.step_injected,
-            "injected_at": fault.timestamp,
+        # Record model output in history (not injection details)
+        event: Dict[str, Any] = {
             "cleared_at": time.time(),
+            "detected_at": fault.timestamp,
         }
+        if prediction is not None:
+            event["detected_type"] = prediction.get("fault_type", "—")
+            event["detected_phase"] = prediction.get("fault_phase", "—")
+            event["detected_location"] = prediction.get("fault_location_bus", "—")
+            event["confidence"] = prediction.get("detection_confidence", 0)
+        else:
+            event["detected_type"] = "—"
+            event["detected_phase"] = "—"
+            event["detected_location"] = "—"
+            event["confidence"] = 0
+
         self._fault_history.append(event)
         if len(self._fault_history) > self._max_history:
             self._fault_history.pop(0)

@@ -186,16 +186,6 @@ class ApiService {
     return this.request<Array<Record<string, unknown>>>('/diagnostics/fault-history');
   }
 
-  async getFaultWaveform() {
-    return this.request<{
-      voltage_seq: number[][][];
-      current_seq: number[][][];
-      bus_names: string[];
-      branch_names: string[];
-      total_cycles: number;
-    }>('/diagnostics/fault-waveform');
-  }
-
   async getModelStatus() {
     return this.request<{ loaded: boolean; dss_model_loaded: boolean; can_inject: boolean; n_buses: number | null; n_features_cnn: number | null }>(
       '/diagnostics/model-status'
