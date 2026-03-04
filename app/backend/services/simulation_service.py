@@ -193,7 +193,11 @@ class SimulationService:
         return payload
 
     def _run_fault_inference(self, current_step: int) -> Optional[FaultPrediction]:
-        """Run sub-cycle capture + model inference for the active fault."""
+        """Run sub-cycle capture + model inference for the active fault.
+        
+        NOTE: This is the legacy one-shot method, kept for backward compatibility.
+        Continuous monitoring now uses _run_continuous_inference() instead.
+        """
         try:
             if not self._fault_detection.is_loaded:
                 self._fault_detection.load()
@@ -220,6 +224,45 @@ class SimulationService:
             return prediction
         except Exception as e:
             logger.error(f"Fault inference failed: {e}", exc_info=True)
+            return None
+
+    def _run_continuous_inference(self, current_step: int) -> Optional[FaultPrediction]:
+        """Continuous grid monitoring — capture and infer at every step.
+
+        Does NOT check fault state. Simply captures the grid's current
+        signals and lets the model decide if something is wrong.
+        This mirrors real-world substation monitoring where the system
+        continuously watches signals and reacts when it sees an anomaly.
+        """
+        try:
+            if not self._fault_detection.is_loaded:
+                self._fault_detection.load()
+
+            # Capture 20 cycles of whatever the grid looks like right now
+            capture = self._fault_injection.capture_grid_snapshot()
+            self._fault_injection._last_capture = capture
+
+            # Let the model decide — it determines normal vs fault
+            prediction = self._fault_detection.run_inference(
+                capture.voltage_seq, capture.current_seq
+            )
+            prediction.step_detected = current_step
+
+            logger.info(f"Grid monitor [step {current_step}]: "
+                        f"is_fault={prediction.is_fault}, "
+                        f"type={prediction.fault_type}, "
+                        f"confidence={prediction.detection_confidence}")
+
+            # Restore simulation mode after snapshot captures
+            if self._mode == "real_data":
+                import opendssdirect as dss_direct
+                dss_direct.Text.Command("Set Mode=Daily")
+                dss_direct.Text.Command("Set Stepsize=15m")
+                dss_direct.Text.Command("Set Number=1")
+
+            return prediction
+        except Exception as e:
+            logger.error(f"Continuous inference failed: {e}", exc_info=True)
             return None
 
     async def start(self, hours: int = 24, speed: float = 1.0,
@@ -292,10 +335,11 @@ class SimulationService:
                 self._current_state = self._dss.get_grid_state()
                 self._current_state.timestamp = self._current_hour
 
-                # ── Fault handling ──
-                newly_applied = self._fault_injection.apply_queued_fault(self._current_step)
-                if newly_applied is not None:
-                    self._latest_prediction = self._run_fault_inference(self._current_step)
+                # ── Fault handling (still applies queued faults to the circuit) ──
+                self._fault_injection.apply_queued_fault(self._current_step)
+
+                # ── Continuous grid monitoring (runs every step, model decides) ──
+                self._latest_prediction = self._run_continuous_inference(self._current_step)
 
                 self._current_step += 1
 
@@ -385,10 +429,11 @@ class SimulationService:
                 self._current_state.voltage_violations = self._dss._check_voltage_violations(self._current_state.buses)
                 self._current_state.overloaded_elements = self._dss._check_overloads()
 
-                # ── Fault handling ──
-                newly_applied = self._fault_injection.apply_queued_fault(self._current_step)
-                if newly_applied is not None:
-                    self._latest_prediction = self._run_fault_inference(self._current_step)
+                # ── Fault handling (still applies queued faults to the circuit) ──
+                self._fault_injection.apply_queued_fault(self._current_step)
+
+                # ── Continuous grid monitoring (runs every step, model decides) ──
+                self._latest_prediction = self._run_continuous_inference(self._current_step)
 
                 self._current_step += 1
 

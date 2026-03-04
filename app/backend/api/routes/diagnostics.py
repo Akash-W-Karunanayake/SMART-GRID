@@ -89,7 +89,18 @@ async def inject_fault(request: FaultInjectionRequest) -> Dict[str, Any]:
 @router.post("/clear-fault")
 async def clear_fault() -> Dict[str, Any]:
     """Clear the currently active fault (Q7: persists until manually cleared)."""
-    result = fault_injection_service.clear_fault()
+    # Capture latest prediction before clearing, for history
+    pred = simulation_service._latest_prediction
+    pred_dict = None
+    if pred is not None:
+        pred_dict = {
+            "fault_type": pred.fault_type,
+            "fault_phase": pred.fault_phase,
+            "fault_location_bus": pred.fault_location_bus,
+            "detection_confidence": pred.detection_confidence,
+        }
+
+    result = fault_injection_service.clear_fault(prediction=pred_dict)
     if not result["success"]:
         raise HTTPException(404, result["error"])
 
