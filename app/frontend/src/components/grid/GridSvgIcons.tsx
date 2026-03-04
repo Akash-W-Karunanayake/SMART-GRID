@@ -3,7 +3,7 @@ import React from 'react';
 export interface GridSvgProps {
   size?: number;
   color?: string;
-  status?: 'normal' | 'low' | 'high' | 'off';
+  status?: 'normal' | 'low' | 'high' | 'off' | 'fault';
   className?: string;
 }
 
@@ -12,6 +12,7 @@ const statusColors = {
   low: '#f59e0b',
   high: '#ef4444',
   off: '#6b7280',
+  fault: '#ef4444',
 };
 
 function resolveColor(color?: string, status?: string): string {

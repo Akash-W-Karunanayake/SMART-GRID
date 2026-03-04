@@ -21,6 +21,7 @@ from config import settings
 from api.routes import grid_router, simulation_router, forecasting_router, diagnostics_router, pipeline_router
 from api.websockets import websocket_endpoint, manager
 from services import opendss_service
+from services.fault_detection_service import fault_detection_service
 
 # Configure logging
 logging.basicConfig(
@@ -50,6 +51,15 @@ async def lifespan(app: FastAPI):
             logger.warning(f"Failed to load OpenDSS model: {result.get('error')}")
     except Exception as e:
         logger.error(f"Error loading OpenDSS model: {e}")
+
+    # Load fault detection model
+    try:
+        if fault_detection_service.load():
+            logger.info("Fault detection model loaded successfully")
+        else:
+            logger.warning("Fault detection model failed to load — inference unavailable")
+    except Exception as e:
+        logger.error(f"Error loading fault detection model: {e}")
 
     logger.info(f"API documentation available at: http://{settings.HOST}:{settings.PORT}/docs")
     logger.info(f"WebSocket endpoint: ws://{settings.HOST}:{settings.PORT}/ws")
@@ -162,6 +172,7 @@ async def health_check():
     return {
         "status": "healthy",
         "model_loaded": opendss_service.is_loaded,
+        "fault_model_loaded": fault_detection_service.is_loaded,
         "websocket_connections": manager.connection_count
     }
 

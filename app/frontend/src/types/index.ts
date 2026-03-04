@@ -12,6 +12,7 @@ export interface LineData {
   bus2: string;
   power_kw: number;
   current_amps: number[];
+  current_angle: number[];
   enabled: boolean;
 }
 
@@ -54,6 +55,42 @@ export interface Violations {
   overloads: string[];
 }
 
+export interface FaultPrediction {
+  is_fault: boolean;
+  detection_confidence: number;
+  fault_type: string;
+  type_probabilities: Record<string, number>;
+  fault_phase: string;
+  phase_probabilities: Record<string, number>;
+  fault_location_bus: string;
+  location_probabilities: Record<string, number>;
+  step_injected?: number;
+  step_detected?: number;
+}
+
+export interface ActiveFault {
+  bus: string;
+  fault_type: string;
+  phase: string;
+  resistance: number;
+  step_injected: number;
+}
+
+export interface FaultPayload {
+  has_active_fault: boolean;
+  active_fault?: ActiveFault;
+  prediction?: FaultPrediction;
+  detection_latency_steps?: number;
+}
+
+export interface SubCycleWaveform {
+  voltage_seq: number[][][];  // [20][N_buses][6]
+  current_seq: number[][][];  // [20][N_branches][6]
+  bus_names: string[];
+  branch_names: string[];
+  total_cycles: number;
+}
+
 export interface GridState {
   timestamp: number;
   simulation_time: string;
@@ -65,6 +102,7 @@ export interface GridState {
   loads: Record<string, LoadData>;
   generators: Record<string, GeneratorData>;
   violations: Violations;
+  fault?: FaultPayload;
 }
 
 // Topology Types
@@ -124,32 +162,6 @@ export interface ForecastResponse {
   horizon_hours: number;
   points: ForecastPoint[];
   model_info?: Record<string, unknown>;
-}
-
-// Diagnostics Types
-export interface DiagnosticResult {
-  fault_detected: boolean;
-  fault_type?: string;
-  fault_phase?: string;
-  fault_location?: string;
-  confidence: number;
-  timestamp: number;
-}
-
-export interface FaultEvent {
-  fault_id: string;
-  location: string;
-  fault_type: string;
-  timestamp: number;
-  severity: string;
-}
-
-export interface RestorationAction {
-  action_id: string;
-  action_type: string;
-  target_element: string;
-  timestamp: number;
-  agent_id?: string;
 }
 
 // WebSocket Message Types
