@@ -29,6 +29,8 @@ scripts_config = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(scripts_config)
 
 from .opendss_service import opendss_service
+from .fault_injection_service import fault_injection_service
+from .fault_detection_service import fault_detection_service
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +125,12 @@ class PipelineService:
         opendss_service._model_loaded = True
         opendss_service._circuit_name = dss.Circuit.Name()
 
+        # ClearAll removed any DSS fault elements — sync Python-side state
+        if fault_injection_service.has_active_fault:
+            logger.info("Pipeline ClearAll: clearing stale Python-side fault state")
+            fault_injection_service._active_fault.cleared = True
+            fault_injection_service._active_fault = None
+
         # Run daily simulation
         dss.Text.Command("Set Mode=Daily")
         dss.Text.Command("Set Stepsize=15m")
@@ -141,6 +149,9 @@ class PipelineService:
 
         steps = []
         for step in range(96):
+            # Apply any queued fault (from Inject button) before solving
+            fault_injection_service.apply_queued_fault(step)
+
             dss.Solution.Solve()
             converged = dss.Solution.Converged()
 
@@ -225,6 +236,47 @@ class PipelineService:
                     1 for v in valid_v if v < 0.95 or v > 1.05
                 )
                 step_data["bus_voltages"] = bus_voltages
+
+                # ── Continuous grid monitoring: run model inference at each step ──
+                try:
+                    if not fault_detection_service.is_loaded:
+                        fault_detection_service.load()
+
+                    if fault_detection_service.is_loaded:
+                        # Capture 20 sub-cycle snapshots of current grid state
+                        capture = fault_injection_service.capture_grid_snapshot()
+
+                        # Run model inference — model decides normal vs fault
+                        prediction = fault_detection_service.run_inference(
+                            capture.voltage_seq, capture.current_seq
+                        )
+                        prediction.step_detected = step
+
+                        # Serialize prediction into step data for frontend
+                        step_data["prediction"] = {
+                            "is_fault": prediction.is_fault,
+                            "detection_confidence": round(prediction.detection_confidence, 4),
+                            "fault_type": prediction.fault_type,
+                            "type_probabilities": {k: round(v, 4) for k, v in prediction.type_probabilities.items()},
+                            "fault_phase": prediction.fault_phase,
+                            "phase_probabilities": {k: round(v, 4) for k, v in prediction.phase_probabilities.items()},
+                            "fault_location_bus": prediction.fault_location_bus,
+                            "location_probabilities": {k: round(v, 4) for k, v in prediction.location_probabilities.items()},
+                            "step_detected": step,
+                        }
+
+                        logger.info(f"Grid monitor [step {step}]: "
+                                    f"is_fault={prediction.is_fault}, "
+                                    f"type={prediction.fault_type}, "
+                                    f"conf={prediction.detection_confidence:.3f}")
+
+                        # Restore daily mode after snapshot captures
+                        dss.Text.Command("Set Mode=Daily")
+                        dss.Text.Command("Set Stepsize=15m")
+                        dss.Text.Command("Set Number=1")
+                        dss.Text.Command("Set controlmode=static")
+                except Exception as e:
+                    logger.warning(f"Continuous inference at step {step} failed: {e}")
 
             steps.append(step_data)
 

@@ -21,13 +21,6 @@ class SimulationStatus(str, Enum):
     ERROR = "error"
 
 
-class FaultType(str, Enum):
-    THREE_PHASE = "3phase"
-    LINE_TO_GROUND = "lg"
-    LINE_TO_LINE = "ll"
-    LINE_TO_LINE_TO_GROUND = "llg"
-
-
 class ComponentType(str, Enum):
     BUS = "bus"
     LINE = "line"
@@ -75,6 +68,7 @@ class LineSchema(BaseModel):
     bus2: str
     power_kw: float
     current_amps: List[float]
+    current_angle: List[float]
     enabled: bool
 
 
@@ -203,19 +197,6 @@ class SetGenerationMultiplierRequest(BaseModel):
     multiplier: float = Field(ge=0.0, le=1.5, description="Generation multiplier (0-1.5)")
 
 
-class InjectFaultRequest(BaseModel):
-    bus: str = Field(description="Bus name where fault occurs")
-    fault_type: FaultType = Field(default=FaultType.THREE_PHASE)
-    resistance: float = Field(default=0.0001, ge=0.0001, le=1000.0)
-
-
-class FaultResponse(BaseResponse):
-    bus: Optional[str] = None
-    fault_type: Optional[str] = None
-    fault_current_amps: Optional[float] = None
-    resistance: Optional[float] = None
-
-
 # ============== Forecasting Schemas (for future ML integration) ==============
 
 class ForecastRequest(BaseModel):
@@ -262,7 +243,49 @@ class SelfHealingStatus(BaseModel):
     system_health: float  # 0-100%
 
 
-# ============== Diagnostics Schemas (for future CNN-Transformer integration) ==============
+# ============== Fault Injection Schemas ==============
+
+class FaultInjectionRequest(BaseModel):
+    bus: str = Field(description="Target bus name")
+    fault_type: str = Field(description="LG, LL, LLG, LLL, or HIF")
+    phase: str = Field(description="Phase: A, B, C, AB, BC, CA, ABG, BCG, CAG, ABC")
+    resistance: float = Field(default=1.0, ge=0.0001, le=1000.0,
+                              description="Fault resistance in ohms")
+
+
+class FaultPredictionResponse(BaseModel):
+    is_fault: bool
+    detection_confidence: float
+
+    fault_type: str
+    type_probabilities: Dict[str, float]
+
+    fault_phase: str
+    phase_probabilities: Dict[str, float]
+
+    fault_location_bus: str
+    location_probabilities: Dict[str, float]
+
+    step_injected: Optional[int] = None
+    step_detected: Optional[int] = None
+
+
+class ActiveFaultResponse(BaseModel):
+    bus: str
+    fault_type: str
+    phase: str
+    resistance: float
+    step_injected: int
+
+
+class FaultStatusResponse(BaseModel):
+    has_active_fault: bool
+    active_fault: Optional[ActiveFaultResponse] = None
+    latest_prediction: Optional[FaultPredictionResponse] = None
+    detection_latency_steps: Optional[int] = None
+
+
+# ============== Diagnostics Schemas (updated for real model integration) ==============
 
 class DiagnosticResult(BaseModel):
     fault_detected: bool
@@ -271,11 +294,12 @@ class DiagnosticResult(BaseModel):
     fault_location: Optional[str] = None
     confidence: float
     timestamp: float
+    type_probabilities: Optional[Dict[str, float]] = None
+    phase_probabilities: Optional[Dict[str, float]] = None
+    location_probabilities: Optional[Dict[str, float]] = None
 
 
 class DiagnosticRequest(BaseModel):
-    voltage_data: Optional[List[List[float]]] = None
-    current_data: Optional[List[List[float]]] = None
     use_live_data: bool = Field(default=True)
 
 

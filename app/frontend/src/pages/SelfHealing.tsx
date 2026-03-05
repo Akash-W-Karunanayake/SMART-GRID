@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { Shield, Play, AlertTriangle, CheckCircle, Activity } from 'lucide-react';
-import api from '../services/api';
 
 export default function SelfHealing() {
   const [status, setStatus] = useState<any>(null);
@@ -15,10 +14,9 @@ export default function SelfHealing() {
 
   const loadStatus = async () => {
     try {
-      const [healingStatus, agents] = await Promise.all([
-        api.getSelfHealingStatus(),
-        api.getAgentStatus(),
-      ]);
+      console.warn('Self-healing API not yet implemented');
+      const healingStatus = null;
+      const agents = null;
       setStatus(healingStatus);
       setAgentStatus(agents);
     } catch (error) {
@@ -30,7 +28,8 @@ export default function SelfHealing() {
     if (!triggerBus) return;
     setLoading(true);
     try {
-      const result = await api.triggerSelfHealing(triggerBus, 'LG');
+      console.warn('triggerSelfHealing not yet implemented');
+      const result = null;
       setTriggerResult(result);
     } catch (error) {
       console.error('Failed to trigger self-healing:', error);

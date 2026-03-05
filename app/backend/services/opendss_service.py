@@ -34,6 +34,7 @@ class LineData:
     bus2: str
     length: float
     current_amps: List[float]
+    current_angle: List[float]  # Phase angles in degrees
     power_kw: float
     power_kvar: float
     losses_kw: float
@@ -353,6 +354,7 @@ class OpenDSSService:
                 bus2=dss.Lines.Bus2(),
                 length=dss.Lines.Length(),
                 current_amps=list(currents[0::2][:3]) if currents else [0.0],
+                current_angle=list(currents[1::2][:3]) if currents else [0.0],
                 power_kw=powers[0] if powers else 0.0,
                 power_kvar=powers[1] if powers else 0.0,
                 losses_kw=losses[0] / 1000 if losses else 0.0,

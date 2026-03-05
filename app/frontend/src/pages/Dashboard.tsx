@@ -16,10 +16,7 @@ import 'reactflow/dist/style.css';
 import {
   Activity,
   Zap,
-  Sun,
-  Wind,
   AlertTriangle,
-  Thermometer,
   CheckCircle,
   Network,
   RefreshCw,
@@ -29,40 +26,151 @@ import {
 } from 'lucide-react';
 import { useGridStore, type LiveMetrics } from '../stores/gridStore';
 import api from '../services/api';
-import type { Topology, TopologyNode, TopologyEdge } from '../types';
+import type { Topology, TopologyNode, TopologyEdge, FaultPayload } from '../types';
 import { getGridSvgIcon, type GridSvgProps } from '../components/grid/GridSvgIcons';
 import { TransformerSvg } from '../components/grid/GridSvgIcons';
 import TransformerNode from '../components/grid/TransformerNode';
 import { calculateRadialLayout } from '../components/grid/RadialLayout';
 
-// ─── Stat Card ─────────────────────────────────────────────────
-interface StatCardProps {
-  title: string;
-  value: string | number;
-  unit?: string;
-  icon: React.ElementType;
-  color?: string;
+// Valid phases per fault type (mirrors backend FAULT_TYPE_PHASES)
+const FAULT_TYPE_PHASES: Record<string, string[]> = {
+  LG: ['A', 'B', 'C'],
+  LL: ['AB', 'BC', 'CA'],
+  LLG: ['ABG', 'BCG', 'CAG'],
+  LLL: ['ABC'],
+};
+
+// ─── Fault Detection Banner ───────────────────────────────────
+function FaultBanner({ fault }: { fault?: FaultPayload | null }) {
+  const hasActiveFault = fault?.has_active_fault === true;
+  const pred = fault?.prediction;
+
+  // State 1: No model prediction — idle (Q4: never show anything not from model)
+  if (!pred && !hasActiveFault) {
+    return (
+      <div className="card bg-slate-800 border-slate-600 py-3 px-5">
+        <div className="flex items-center space-x-3">
+          <Activity className="w-6 h-6 text-slate-500" />
+          <div>
+            <span className="text-lg font-bold text-slate-400">IDLE</span>
+            <span className="text-sm text-slate-500 ml-3">Monitoring will begin when simulation starts</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // State 2: Active fault but no prediction yet — waiting for model
+  if (hasActiveFault && !pred) {
+    const af = fault?.active_fault;
+    return (
+      <div className="card bg-amber-900/40 border-amber-600 py-3 px-5">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center space-x-3">
+            <Activity className="w-6 h-6 text-amber-400 animate-pulse" />
+            <span className="text-lg font-bold text-amber-400">ANALYZING...</span>
+          </div>
+          {af && (
+            <div className="flex items-center space-x-4 text-sm">
+              <div>
+                <span className="text-slate-400">Bus: </span>
+                <span className="text-white font-mono">{af.bus}</span>
+              </div>
+              <div>
+                <span className="text-slate-400">Type: </span>
+                <span className="text-white font-mono">{af.fault_type}</span>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // State 3: Model prediction exists — show model output
+  const isFaultDetected = pred?.is_fault === true;
+
+  // Model says normal (is_fault=false) — this IS a model output
+  if (!isFaultDetected) {
+    return (
+      <div className="card bg-green-900/30 border-green-700 py-3 px-5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <CheckCircle className="w-6 h-6 text-green-400" />
+            <div>
+              <span className="text-lg font-bold text-green-400">NORMAL</span>
+              <span className="text-sm text-slate-400 ml-3">Model prediction: no fault detected</span>
+            </div>
+          </div>
+          <div className="text-sm">
+            <span className="text-slate-400">Confidence: </span>
+            <span className="text-white font-mono font-bold">
+              {((1 - (pred?.detection_confidence ?? 0)) * 100).toFixed(1)}%
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // State 4: Model detected fault — show full prediction details
+  return (
+    <div className="card bg-red-900/40 border-red-600 py-3 px-5">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="flex items-center space-x-3">
+          <AlertTriangle className="w-6 h-6 text-red-400" />
+          <span className="text-lg font-bold text-red-400">FAULT DETECTED</span>
+        </div>
+        <div className="flex items-center space-x-6 text-sm">
+          <div>
+            <span className="text-slate-400">Type: </span>
+            <span className="text-white font-mono font-bold">{pred!.fault_type}</span>
+          </div>
+          <div>
+            <span className="text-slate-400">Phase: </span>
+            <span className="text-white font-mono font-bold">{pred!.fault_phase}</span>
+          </div>
+          <div>
+            <span className="text-slate-400">Confidence: </span>
+            <span className="text-white font-mono font-bold">
+              {(pred!.detection_confidence * 100).toFixed(1)}%
+            </span>
+          </div>
+          <div>
+            <span className="text-slate-400">Location: </span>
+            <span className="text-white font-mono font-bold">{pred!.fault_location_bus}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
-function StatCard({ title, value, unit, icon: Icon, color = 'blue' }: StatCardProps) {
-  const colorClasses: Record<string, string> = {
-    blue: 'bg-blue-900/50 border-blue-700 text-blue-400',
-    green: 'bg-green-900/50 border-green-700 text-green-400',
-    amber: 'bg-amber-900/50 border-amber-700 text-amber-400',
-    red: 'bg-red-900/50 border-red-700 text-red-400',
-  };
+// ─── Latest Prediction Cards (shown only when fault detected) ─
+function LatestPredictionCards({ fault }: { fault?: FaultPayload | null }) {
+  const pred = fault?.prediction;
+  if (!pred || !pred.is_fault) return null;
 
   return (
-    <div className={`card ${colorClasses[color] ?? colorClasses.blue}`}>
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm text-slate-400">{title}</p>
-          <p className="text-2xl font-bold text-white mt-1">
-            {value}
-            {unit && <span className="text-sm font-normal ml-1">{unit}</span>}
-          </p>
-        </div>
-        <Icon className="w-8 h-8 opacity-50" />
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="card py-3 px-4">
+        <p className="text-xs text-slate-400">Detection</p>
+        <p className="text-xl font-bold text-red-400">FAULT</p>
+        <p className="text-xs text-slate-500">{(pred.detection_confidence * 100).toFixed(1)}% confidence</p>
+      </div>
+      <div className="card py-3 px-4">
+        <p className="text-xs text-slate-400">Fault Type</p>
+        <p className="text-xl font-bold text-amber-400">{pred.fault_type}</p>
+      </div>
+      <div className="card py-3 px-4">
+        <p className="text-xs text-slate-400">Phase</p>
+        <p className="text-xl font-bold text-blue-400">{pred.fault_phase}</p>
+      </div>
+      <div className="card py-3 px-4">
+        <p className="text-xs text-slate-400">Location</p>
+        <p className="text-lg font-bold text-white truncate" title={pred.fault_location_bus}>
+          {pred.fault_location_bus}
+        </p>
       </div>
     </div>
   );
@@ -71,14 +179,12 @@ function StatCard({ title, value, unit, icon: Icon, color = 'blue' }: StatCardPr
 // ─── Custom SVG Node ───────────────────────────────────────────
 function SvgGridNode({ data }: { data: any }) {
   const SvgIcon: React.FC<GridSvgProps> = data.svgIcon;
-  const statusColors = {
-    normal: { text: 'text-green-400' },
-    low: { text: 'text-amber-400' },
-    high: { text: 'text-red-400' },
-  };
+
   // For PV/solar nodes: show 'off' status when it's nighttime
-  const effectiveStatus = data.isSolar && data.solarOff ? 'off' : (data.voltageStatus ?? 'normal');
-  const colors = statusColors[effectiveStatus as keyof typeof statusColors] || statusColors.normal;
+  const effectiveStatus = data.isSolar && data.solarOff ? 'off' : 'normal';
+
+  // Fault heat map: override with 'fault' status when this bus is fault-highlighted
+  const displayStatus = data.faultHighlight ? 'fault' : effectiveStatus;
 
   return (
     <div className={`relative flex flex-col items-center group ${data.isPlaybackActive ? 'transition-all duration-300' : ''}`}>
@@ -86,7 +192,7 @@ function SvgGridNode({ data }: { data: any }) {
       <Handle type="target" position={Position.Left} className="!bg-slate-400 !w-2 !h-2" />
 
       <div className={data.isPlaybackActive && !data.solarOff && data.isSolar ? 'animate-pulse' : ''}>
-        <SvgIcon size={28} status={effectiveStatus} />
+        <SvgIcon size={28} status={displayStatus} />
       </div>
 
       <div
@@ -100,9 +206,10 @@ function SvgGridNode({ data }: { data: any }) {
         <div className="text-[8px] text-slate-400">{data.kv} kV</div>
       )}
 
-      {data.voltagePu != null && (
-        <div className={`text-[9px] font-medium ${colors.text}`}>
-          {data.voltagePu.toFixed(3)} pu
+      {/* Show fault probability when highlighted */}
+      {data.faultProb != null && (
+        <div className="text-[9px] font-medium text-red-400">
+          {(data.faultProb * 100).toFixed(1)}%
         </div>
       )}
 
@@ -151,15 +258,13 @@ const PV_CAPACITY_KW: Record<string, number> = {
 };
 const TOTAL_PV_CAPACITY_KW = 47320;
 
-// ─── Feeder IDs for per-feeder power mapping ───────────────────
-const FEEDER_IDS = ['F06', 'F07', 'F08', 'F09', 'F10', 'F11', 'F12'] as const;
-
 // ─── Build ReactFlow graph with radial layout ──────────────────
 function buildFlowGraph(
   topology: Topology,
   gridState: any,
   liveMetrics?: LiveMetrics | null,
   isPlaybackActive?: boolean,
+  faultPayload?: FaultPayload | null,
 ): { nodes: Node[]; edges: Edge[] } {
   const nodes: Node[] = [];
   const edges: Edge[] = [];
@@ -191,24 +296,17 @@ function buildFlowGraph(
   const augmentedTopology: Topology = { nodes: augmentedNodes, edges: augmentedEdges };
   const posMap = calculateRadialLayout(augmentedTopology);
 
-  // Determine day/night and solar activity from live metrics
-  const currentHour = liveMetrics?.hour ?? null;
-  const isDaytime = currentHour !== null && currentHour >= 6 && currentHour < 18;
+  // Determine solar activity from live metrics
   const solarActive = liveMetrics ? liveMetrics.total_solar_kw > 0 : false;
 
   // Create bus nodes (SVG icons)
   for (const node of topology.nodes) {
     const pos = posMap.get(node.id) ?? { x: 0, y: 0 };
-    const busData = gridState?.buses?.[node.id];
-
-    // During playback: prefer per-step bus voltage; fall back to gridState
-    const liveV = liveMetrics?.bus_voltages?.[node.id];
-    const voltagePu = liveV ?? busData?.voltage_pu?.[0];
-    const voltageStatus: 'normal' | 'low' | 'high' = voltagePu
-      ? voltagePu < 0.95 ? 'low'
-        : voltagePu > 1.05 ? 'high'
-        : 'normal'
-      : 'normal';
+    // Fault heat map: only active when is_fault=true (Q10)
+    const isFaultActive = faultPayload?.prediction?.is_fault === true;
+    const locProbs = faultPayload?.prediction?.location_probabilities;
+    const faultProb = isFaultActive && locProbs ? (locProbs[node.id] ?? null) : null;
+    const faultHighlight = faultProb !== null && faultProb > 0.01;
 
     const shortLabel = node.label.length > 14
       ? node.label.substring(0, 14) + '...'
@@ -216,8 +314,6 @@ function buildFlowGraph(
 
     const nameLower = node.label.toLowerCase();
     const isSolar = nameLower.includes('pv') || nameLower.includes('solar');
-    const isWind = nameLower.includes('wind');
-    const isGenerator = nameLower.includes('gen') || nameLower.includes('ujps');
 
     // Show live output for generation nodes during playback
     let liveOutputKw: number | null = null;
@@ -237,8 +333,8 @@ function buildFlowGraph(
         shortLabel,
         kv: node.kv,
         svgIcon: getGridSvgIcon(node.label),
-        voltageStatus,
-        voltagePu,
+        faultHighlight,
+        faultProb,
         isSolar,
         solarOff: isSolar && isPlaybackActive && !solarActive,
         isPlaybackActive: !!isPlaybackActive,
@@ -290,38 +386,19 @@ function buildFlowGraph(
     });
   }
 
-  // Create line edges with reverse flow detection
-  // Edge colors: green=normal import, orange=reverse flow (export), gray=inactive, red=overloaded
+  // Create line edges
   for (const edge of lineEdges) {
     const lineData = gridState?.lines?.[edge.label];
     const isActive = lineData?.enabled !== false;
-
-    // Detect reverse power flow: check if this edge belongs to a feeder with negative power
-    let isReverseFlow = false;
-    if (isPlaybackActive && liveMetrics && isActive) {
-      const edgeLabelLower = edge.label.toLowerCase();
-      for (const fid of FEEDER_IDS) {
-        if (edgeLabelLower.includes(fid.toLowerCase())) {
-          const feederKey = `power_${fid}_kw` as keyof LiveMetrics;
-          const feederPower = liveMetrics[feederKey] as number | undefined;
-          if (feederPower != null && feederPower < 0) {
-            isReverseFlow = true;
-          }
-          break;
-        }
-      }
-    }
-
-    const strokeColor = !isActive ? '#6b7280' : isReverseFlow ? '#f97316' : '#22c55e';
-    const strokeWidth = isReverseFlow ? 3 : 2;
+    const strokeColor = isActive ? '#22c55e' : '#6b7280';
 
     edges.push({
       id: edge.id,
-      source: isReverseFlow ? edge.target : edge.source,
-      target: isReverseFlow ? edge.source : edge.target,
+      source: edge.source,
+      target: edge.target,
       type: 'smoothstep',
       animated: isActive,
-      style: { stroke: strokeColor, strokeWidth },
+      style: { stroke: strokeColor, strokeWidth: 2 },
       markerEnd: {
         type: MarkerType.ArrowClosed,
         color: strokeColor,
@@ -339,28 +416,208 @@ function buildFlowGraph(
   return { nodes, edges };
 }
 
-// ─── Side Panel Components ─────────────────────────────────────
-function VoltageStatusLegend() {
+// ─── Fault Injection Panel ────────────────────────────────────
+function FaultInjectionPanel({
+  topology,
+  fault,
+}: {
+  topology: Topology | null;
+  fault?: FaultPayload | null;
+}) {
+  const [bus, setBus] = useState('');
+  const [faultType, setFaultType] = useState('LG');
+  const [phase, setPhase] = useState('A');
+  const [resistance, setResistance] = useState(1);
+  const [status, setStatus] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [modelReady, setModelReady] = useState(false);
+
+  const busNames = useMemo(() => {
+    if (!topology) return [];
+    return topology.nodes
+      .map(n => n.id)
+      .filter(id => {
+        const lower = id.toLowerCase();
+        // Allow 33kV buses and feeder nodes (f05-f12)
+        if (lower.startsWith('bus_33kv')) return true;
+        if (/^f(0[5-9]|1[0-2])_node/.test(lower)) return true;
+        return false;
+      })
+      .sort();
+  }, [topology]);
+
+  // Poll model status to know if injection is available
+  useEffect(() => {
+    const check = () => {
+      api.getModelStatus()
+        .then((s) => setModelReady(s.dss_model_loaded ?? false))
+        .catch(() => setModelReady(false));
+    };
+    check();
+    const interval = setInterval(check, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Reset phase when fault type changes
+  useEffect(() => {
+    const validPhases = FAULT_TYPE_PHASES[faultType] ?? [];
+    if (!validPhases.includes(phase)) {
+      setPhase(validPhases[0] ?? 'A');
+    }
+  }, [faultType]);
+
+  const canInject = modelReady && !fault?.has_active_fault && bus !== '' && !submitting;
+  const canClear = fault?.has_active_fault === true && !submitting;
+
+  // After inject/clear, fetch fault status and update gridState
+  const refreshFaultState = async () => {
+    try {
+      const resp = await api.getFaultStatus();
+      // Map backend FaultStatusResponse to frontend FaultPayload shape
+      const faultPayload: FaultPayload = {
+        has_active_fault: resp.has_active_fault,
+        active_fault: resp.active_fault,
+        prediction: resp.latest_prediction as any,
+        detection_latency_steps: resp.detection_latency_steps,
+      };
+      const store = useGridStore.getState();
+      if (store.gridState) {
+        store.setGridState({ ...store.gridState, fault: faultPayload });
+      }
+    } catch { /* ignore — WebSocket will update if sim is running */ }
+  };
+
+  const handleInject = async () => {
+    setSubmitting(true);
+    setStatus(null);
+    try {
+      const res = await api.injectFault(bus, faultType, phase, resistance);
+      setStatus({ type: 'success', msg: res.message });
+      // Refresh fault state (needed when no live simulation is streaming updates)
+      await refreshFaultState();
+    } catch (err: any) {
+      setStatus({ type: 'error', msg: err.message ?? 'Injection failed' });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleClear = async () => {
+    setSubmitting(true);
+    setStatus(null);
+    try {
+      const res = await api.clearFault();
+      setStatus({ type: 'success', msg: res.message });
+      await refreshFaultState();
+    } catch (err: any) {
+      setStatus({ type: 'error', msg: err.message ?? 'Clear failed' });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
-    <div className="card">
-      <h3 className="font-semibold text-white mb-3 text-sm">Voltage Status</h3>
-      <div className="space-y-2 text-xs">
-        <div className="flex items-center">
-          <div className="w-3 h-3 rounded-full bg-green-500 mr-2" />
-          <span className="text-slate-300">Normal (0.95-1.05 pu)</span>
+    <div className="card border-amber-700/50">
+      <h3 className="font-semibold text-white mb-3 text-sm flex items-center">
+        <Zap className="w-4 h-4 mr-1.5 text-amber-400" />
+        Fault Injection
+      </h3>
+
+      <div className="space-y-2">
+        {/* Bus selector */}
+        <div>
+          <label className="text-[10px] text-slate-400 block mb-0.5">Target Bus</label>
+          <select
+            value={bus}
+            onChange={(e) => setBus(e.target.value)}
+            className="w-full bg-slate-700 text-white text-xs rounded px-2 py-1.5 border border-slate-600"
+          >
+            <option value="">Select bus...</option>
+            {busNames.map((b) => (
+              <option key={b} value={b}>{b}</option>
+            ))}
+          </select>
         </div>
-        <div className="flex items-center">
-          <div className="w-3 h-3 rounded-full bg-amber-500 mr-2" />
-          <span className="text-slate-300">Low (&lt;0.95 pu)</span>
+
+        {/* Fault type */}
+        <div>
+          <label className="text-[10px] text-slate-400 block mb-0.5">Fault Type</label>
+          <select
+            value={faultType}
+            onChange={(e) => setFaultType(e.target.value)}
+            className="w-full bg-slate-700 text-white text-xs rounded px-2 py-1.5 border border-slate-600"
+          >
+            {Object.keys(FAULT_TYPE_PHASES).map((ft) => (
+              <option key={ft} value={ft}>{ft}</option>
+            ))}
+          </select>
         </div>
-        <div className="flex items-center">
-          <div className="w-3 h-3 rounded-full bg-red-500 mr-2" />
-          <span className="text-slate-300">High (&gt;1.05 pu)</span>
+
+        {/* Phase */}
+        <div>
+          <label className="text-[10px] text-slate-400 block mb-0.5">Phase</label>
+          <select
+            value={phase}
+            onChange={(e) => setPhase(e.target.value)}
+            className="w-full bg-slate-700 text-white text-xs rounded px-2 py-1.5 border border-slate-600"
+          >
+            {(FAULT_TYPE_PHASES[faultType] ?? []).map((p) => (
+              <option key={p} value={p}>{p}</option>
+            ))}
+          </select>
         </div>
+
+        {/* Resistance */}
+        <div>
+          <label className="text-[10px] text-slate-400 block mb-0.5">Resistance (Ω)</label>
+          <select
+            value={resistance}
+            onChange={(e) => setResistance(Number(e.target.value))}
+            className="w-full bg-slate-700 text-white text-xs rounded px-2 py-1.5 border border-slate-600"
+          >
+            {Array.from({ length: 10 }, (_, i) => i + 1).map((r) => (
+              <option key={r} value={r}>{r}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Inject / Clear buttons */}
+        <div className="flex space-x-2 pt-1">
+          <button
+            onClick={handleInject}
+            disabled={!canInject}
+            className="flex-1 bg-amber-600 hover:bg-amber-500 disabled:bg-slate-600 disabled:text-slate-400
+                       text-white text-xs font-medium py-1.5 rounded transition-colors"
+          >
+            {submitting ? '...' : 'Inject'}
+          </button>
+          <button
+            onClick={handleClear}
+            disabled={!canClear}
+            className="flex-1 bg-red-600 hover:bg-red-500 disabled:bg-slate-600 disabled:text-slate-400
+                       text-white text-xs font-medium py-1.5 rounded transition-colors"
+          >
+            Clear
+          </button>
+        </div>
+
+        {/* Status message */}
+        {status && (
+          <p className={`text-[10px] ${status.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>
+            {status.msg}
+          </p>
+        )}
+
+        {/* Hint when model not ready */}
+        {!modelReady && (
+          <p className="text-[10px] text-slate-500">Run a simulation first to load the grid model</p>
+        )}
       </div>
     </div>
   );
 }
+
+// ─── Side Panel Components ─────────────────────────────────────
 
 function ConnectionTypesLegend() {
   return (
@@ -370,10 +627,6 @@ function ConnectionTypesLegend() {
         <div className="flex items-center">
           <div className="w-6 h-0.5 bg-green-500 mr-2" />
           <span className="text-slate-300">Active Line</span>
-        </div>
-        <div className="flex items-center">
-          <div className="w-6 h-0.5 mr-2" style={{ backgroundColor: '#f97316' }} />
-          <span className="text-slate-300">Reverse Flow (export)</span>
         </div>
         <div className="flex items-center">
           <TransformerSvg size={16} status="normal" className="mr-2" />
@@ -403,11 +656,10 @@ function SelectedNodePanel({ node }: { node: any }) {
         {node.voltage_pu && (
           <div className="flex justify-between">
             <span className="text-slate-400">Voltage (pu):</span>
-            <span className={`font-medium ${
-              node.voltage_pu[0] < 0.95 ? 'text-amber-400'
+            <span className={`font-medium ${node.voltage_pu[0] < 0.95 ? 'text-amber-400'
                 : node.voltage_pu[0] > 1.05 ? 'text-red-400'
-                : 'text-green-400'
-            }`}>
+                  : 'text-green-400'
+              }`}>
               {node.voltage_pu[0]?.toFixed(4)}
             </span>
           </div>
@@ -494,7 +746,6 @@ function NetworkStats({ topology }: { topology: Topology | null }) {
 export default function Dashboard() {
   const {
     gridState,
-    pipelineSteps,
     lastSimDate,
     topology,
     setTopology,
@@ -506,7 +757,6 @@ export default function Dashboard() {
     playbackStepIndex,
     playbackDayIndex,
     playbackTotalDays,
-    playbackVisibleSteps,
     liveMetrics,
   } = useGridStore();
 
@@ -553,6 +803,7 @@ export default function Dashboard() {
         gridState,
         liveMetrics,
         isActive,
+        gridState?.fault ?? null,
       );
       setNodes(flowNodes);
       setEdges(flowEdges);
@@ -583,10 +834,10 @@ export default function Dashboard() {
   const toggleFullscreen = useCallback(() => {
     if (!gridContainerRef.current) return;
     if (!isFullscreen) {
-      gridContainerRef.current.requestFullscreen?.().catch(() => {});
+      gridContainerRef.current.requestFullscreen?.().catch(() => { });
       setIsFullscreen(true);
     } else {
-      document.exitFullscreen?.().catch(() => {});
+      document.exitFullscreen?.().catch(() => { });
       setIsFullscreen(false);
     }
   }, [isFullscreen]);
@@ -604,53 +855,10 @@ export default function Dashboard() {
     rfInstance?.fitView({ padding: 0.2 });
   }, [rfInstance]);
 
-  // ─── Derive stat card values from live metrics OR final grid state ───
+  // ─── Derive display values from live metrics OR final grid state ───
   const currentHourLabel = liveMetrics
     ? `${String(Math.floor(liveMetrics.hour)).padStart(2, '0')}:${String(Math.round((liveMetrics.hour % 1) * 60)).padStart(2, '0')}`
     : null;
-
-  // During playback: use liveMetrics; after playback: use gridState
-  const displayLoad = isActive && liveMetrics
-    ? (liveMetrics.total_power_kw / 1000).toFixed(2) + ' MW'
-    : gridState?.summary.total_load_kw != null
-      ? gridState.summary.total_load_kw.toFixed(1)
-      : '\u2014';
-  const displayLoadUnit = isActive && liveMetrics ? '' : 'kW';
-
-  const displaySolar = isActive && liveMetrics
-    ? liveMetrics.total_solar_kw.toFixed(1)
-    : gridState?.summary.total_solar_kw?.toFixed(1) ?? '\u2014';
-
-  const displayWind = isActive && liveMetrics
-    ? liveMetrics.total_wind_kw.toFixed(1)
-    : (gridState?.summary as any)?.total_wind_kw?.toFixed(1) ?? '\u2014';
-
-  const displayGeneration = isActive && liveMetrics
-    ? (liveMetrics.total_generation_kw / 1000).toFixed(2) + ' MW'
-    : gridState?.summary.total_generation_kw != null
-      ? (gridState.summary.total_generation_kw / 1000).toFixed(2) + ' MW'
-      : '\u2014';
-  const displayGenerationUnit = '';
-
-  const displayLosses = isActive && liveMetrics
-    ? liveMetrics.total_losses_kw.toFixed(1)
-    : gridState?.summary.total_losses_kw?.toFixed(2) ?? '\u2014';
-
-  const visibleSteps = isActive ? playbackVisibleSteps : pipelineSteps;
-  const convergedCount = visibleSteps.filter(s => s.converged).length;
-  const convergedLabel = visibleSteps.length > 0
-    ? `${convergedCount}/${visibleSteps.length}`
-    : '\u2014';
-
-  const displayViolations = isActive && liveMetrics
-    ? liveMetrics.voltage_violations
-    : gridState?.summary.num_voltage_violations ?? 0;
-
-  const convergedColor = isActive && liveMetrics
-    ? (liveMetrics.converged ? 'green' : 'amber')
-    : (gridState?.converged ? 'green' : 'amber');
-
-  const violationColor = displayViolations > 0 ? 'red' : 'green';
 
   return (
     <div className="space-y-4 h-full flex flex-col">
@@ -701,99 +909,19 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Stats Grid - 7 cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
-        <StatCard
-          title="Total Load"
-          value={displayLoad}
-          unit={displayLoadUnit}
-          icon={Activity}
-          color="blue"
-        />
-        <StatCard
-          title="Total Generation"
-          value={displayGeneration}
-          unit={displayGenerationUnit}
-          icon={Zap}
-          color="green"
-        />
-        <StatCard
-          title="Solar Generation"
-          value={displaySolar}
-          unit="kW"
-          icon={Sun}
-          color={isActive && liveMetrics && liveMetrics.total_solar_kw > 0 ? 'green' : 'amber'}
-        />
-        <StatCard
-          title="Wind Generation"
-          value={displayWind}
-          unit="kW"
-          icon={Wind}
-          color={isActive && liveMetrics && liveMetrics.total_wind_kw > 0 ? 'green' : 'blue'}
-        />
-        <StatCard
-          title="System Losses"
-          value={displayLosses}
-          unit="kW"
-          icon={Thermometer}
-          color="amber"
-        />
-        <StatCard
-          title="Convergence"
-          value={convergedLabel}
-          icon={CheckCircle}
-          color={convergedColor}
-        />
-        <StatCard
-          title="Violations"
-          value={displayViolations}
-          icon={AlertTriangle}
-          color={violationColor}
-        />
-      </div>
+      {/* Fault Detection Banner */}
+      <FaultBanner fault={gridState?.fault} />
 
-      {/* Feeder-wise Net Load Panel */}
-      {isActive && liveMetrics && (
-        <div className="card py-2 px-4">
-          <h3 className="text-sm font-semibold text-white mb-2">Feeder-wise Net Load</h3>
-          <div className="grid grid-cols-7 gap-2">
-            {FEEDER_IDS.map((fid) => {
-              const key = `power_${fid}_kw` as keyof LiveMetrics;
-              const val = liveMetrics[key] as number | undefined;
-              const isReverse = val != null && val < 0;
-              return (
-                <div
-                  key={fid}
-                  className={`rounded-lg px-3 py-1.5 text-center border ${
-                    isReverse
-                      ? 'bg-orange-900/40 border-orange-600'
-                      : 'bg-slate-800 border-slate-600'
-                  }`}
-                >
-                  <div className="text-xs text-slate-400">{fid}</div>
-                  <div className={`text-sm font-mono font-bold ${
-                    isReverse ? 'text-orange-400' : 'text-white'
-                  }`}>
-                    {val != null ? `${(val / 1000).toFixed(2)}` : '\u2014'}
-                  </div>
-                  <div className="text-[10px] text-slate-500">
-                    {isReverse ? 'MW (export)' : 'MW'}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
+      {/* Latest Prediction Cards (fault only) */}
+      <LatestPredictionCards fault={gridState?.fault} />
 
       {/* Main Grid Topology Viewer */}
       <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-4 gap-4">
         {/* Topology View */}
         <div
           ref={gridContainerRef}
-          className={`lg:col-span-3 card p-0 overflow-hidden relative ${
-            isFullscreen ? 'fullscreen-grid' : ''
-          }`}
+          className={`lg:col-span-3 card p-0 overflow-hidden relative ${isFullscreen ? 'fullscreen-grid' : ''
+            }`}
         >
           {/* Toolbar */}
           <div className="absolute top-2 left-2 z-10 flex items-center space-x-2">
@@ -853,9 +981,7 @@ export default function Dashboard() {
             <MiniMap
               nodeColor={(node) => {
                 if (node.id.startsWith('__xfmr_')) return '#a855f7';
-                const status = node.data?.voltageStatus;
-                if (status === 'low') return '#f59e0b';
-                if (status === 'high') return '#ef4444';
+                if (node.data?.faultHighlight) return '#ef4444';
                 return '#22c55e';
               }}
               maskColor="rgba(0, 0, 0, 0.8)"
@@ -868,7 +994,10 @@ export default function Dashboard() {
 
         {/* Side Panel */}
         <div className="space-y-3 overflow-y-auto">
-          <VoltageStatusLegend />
+          <FaultInjectionPanel
+            topology={topology}
+            fault={gridState?.fault}
+          />
           <ConnectionTypesLegend />
           <SelectedNodePanel node={selectedNode} />
           <NetworkStats topology={topology} />

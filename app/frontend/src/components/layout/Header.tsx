@@ -236,67 +236,6 @@ export default function Header() {
           </div>
         )}
 
-        {/* Show live power metrics during playback */}
-        {liveMetrics && (
-          <>
-            <div className="text-center">
-              <p className="text-[10px] text-slate-500">Load</p>
-              <p className="text-xs font-semibold text-white">
-                {(liveMetrics.total_power_kw / 1000).toFixed(2)} MW
-              </p>
-            </div>
-            <div className="text-center">
-              <p className="text-[10px] text-slate-500">Solar</p>
-              <p className={`text-xs font-semibold ${liveMetrics.total_solar_kw > 0 ? 'text-yellow-400' : 'text-slate-500'}`}>
-                {(liveMetrics.total_solar_kw / 1000).toFixed(2)} MW
-              </p>
-            </div>
-            <div className="text-center">
-              <p className="text-[10px] text-slate-500">Losses</p>
-              <p className="text-xs font-semibold text-amber-400">
-                {liveMetrics.total_losses_kw.toFixed(1)} kW
-              </p>
-            </div>
-            <div className="text-center">
-              <p className="text-[10px] text-slate-500">Violations</p>
-              <p className={`text-xs font-semibold ${liveMetrics.voltage_violations > 0 ? 'text-red-400' : 'text-green-400'}`}>
-                {liveMetrics.voltage_violations}
-              </p>
-            </div>
-          </>
-        )}
-
-        {/* Show static grid stats when NOT playing back */}
-        {!isActive && gridState && (
-          <>
-            <div className="text-center">
-              <p className="text-xs text-slate-400">Load</p>
-              <p className="text-sm font-semibold text-white">
-                {gridState.summary.total_load_kw.toFixed(1)} kW
-              </p>
-            </div>
-            <div className="text-center">
-              <p className="text-xs text-slate-400">Generation</p>
-              <p className="text-sm font-semibold text-green-400">
-                {gridState.summary.total_generation_kw.toFixed(1)} kW
-              </p>
-            </div>
-            <div className="text-center">
-              <p className="text-xs text-slate-400">Losses</p>
-              <p className="text-sm font-semibold text-amber-400">
-                {gridState.summary.total_losses_kw.toFixed(2)} kW
-              </p>
-            </div>
-            <div className="text-center">
-              <p className="text-xs text-slate-400">Violations</p>
-              <p className={`text-sm font-semibold ${
-                gridState.summary.num_voltage_violations > 0 ? 'text-red-400' : 'text-green-400'
-              }`}>
-                {gridState.summary.num_voltage_violations}
-              </p>
-            </div>
-          </>
-        )}
       </div>
 
       {/* Right: Convergence badge */}

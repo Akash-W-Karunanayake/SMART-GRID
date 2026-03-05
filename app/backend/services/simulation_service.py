@@ -10,6 +10,8 @@ from datetime import datetime
 import logging
 
 from .opendss_service import OpenDSSService, opendss_service, GridState
+from .fault_injection_service import fault_injection_service, FaultInjectionService
+from .fault_detection_service import fault_detection_service, FaultDetectionService, FaultPrediction
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +35,11 @@ class SimulationService:
         self._current_hour: float = 0.0
         self._step_minutes: int = 15  # 15-minute intervals
         self._mode: str = "synthetic"  # "synthetic" or "real_data"
+        # Fault integration
+        self._fault_injection: FaultInjectionService = fault_injection_service
+        self._fault_detection: FaultDetectionService = fault_detection_service
+        self._current_step: int = 0
+        self._latest_prediction: Optional[FaultPrediction] = None
 
     @property
     def is_running(self) -> bool:
@@ -105,6 +112,7 @@ class SimulationService:
                     "bus2": line.bus2,
                     "power_kw": round(line.power_kw, 2),
                     "current_amps": [round(c, 2) for c in line.current_amps],
+                    "current_angle": [round(a, 2) for a in line.current_angle],
                     "enabled": line.enabled
                 }
                 for name, line in state.lines.items()
@@ -141,8 +149,121 @@ class SimulationService:
             "violations": {
                 "voltage": state.voltage_violations,
                 "overloads": state.overloaded_elements
-            }
+            },
+            "fault": self._build_fault_payload(),
         }
+
+    def _build_fault_payload(self) -> Dict[str, Any]:
+        """Build the fault section of the WebSocket state payload."""
+        fi = self._fault_injection
+        payload: Dict[str, Any] = {
+            "has_active_fault": fi.has_active_fault,
+            "active_fault": None,
+            "prediction": None,
+            "detection_latency_steps": None,
+        }
+
+        if fi.has_active_fault and fi.active_fault:
+            af = fi.active_fault
+            payload["active_fault"] = {
+                "bus": af.bus,
+                "fault_type": af.fault_type,
+                "phase": af.phase,
+                "resistance": af.resistance,
+                "step_injected": af.step_injected,
+            }
+
+        if self._latest_prediction is not None:
+            p = self._latest_prediction
+            payload["prediction"] = {
+                "is_fault": p.is_fault,
+                "detection_confidence": p.detection_confidence,
+                "fault_type": p.fault_type,
+                "type_probabilities": p.type_probabilities,
+                "fault_phase": p.fault_phase,
+                "phase_probabilities": p.phase_probabilities,
+                "fault_location_bus": p.fault_location_bus,
+                "location_probabilities": p.location_probabilities,
+                "step_injected": p.step_injected,
+                "step_detected": p.step_detected,
+            }
+            if p.step_injected is not None and p.step_detected is not None:
+                payload["detection_latency_steps"] = p.step_detected - p.step_injected
+
+        return payload
+
+    def _run_fault_inference(self, current_step: int) -> Optional[FaultPrediction]:
+        """Run sub-cycle capture + model inference for the active fault.
+        
+        NOTE: This is the legacy one-shot method, kept for backward compatibility.
+        Continuous monitoring now uses _run_continuous_inference() instead.
+        """
+        try:
+            if not self._fault_detection.is_loaded:
+                self._fault_detection.load()
+
+            capture = self._fault_injection.capture_subcycle_snapshots()
+            self._fault_injection._last_capture = capture
+            prediction = self._fault_detection.run_inference(
+                capture.voltage_seq, capture.current_seq
+            )
+            prediction.step_injected = self._fault_injection.active_fault.step_injected
+            prediction.step_detected = current_step
+
+            logger.info(f"Fault inference: is_fault={prediction.is_fault}, "
+                        f"type={prediction.fault_type}, phase={prediction.fault_phase}, "
+                        f"bus={prediction.fault_location_bus}")
+
+            # Restore simulation mode after sub-cycle snapshots
+            if self._mode == "real_data":
+                import opendssdirect as dss_direct
+                dss_direct.Text.Command("Set Mode=Daily")
+                dss_direct.Text.Command("Set Stepsize=15m")
+                dss_direct.Text.Command("Set Number=1")
+
+            return prediction
+        except Exception as e:
+            logger.error(f"Fault inference failed: {e}", exc_info=True)
+            return None
+
+    def _run_continuous_inference(self, current_step: int) -> Optional[FaultPrediction]:
+        """Continuous grid monitoring — capture and infer at every step.
+
+        Does NOT check fault state. Simply captures the grid's current
+        signals and lets the model decide if something is wrong.
+        This mirrors real-world substation monitoring where the system
+        continuously watches signals and reacts when it sees an anomaly.
+        """
+        try:
+            if not self._fault_detection.is_loaded:
+                self._fault_detection.load()
+
+            # Capture 20 cycles of whatever the grid looks like right now
+            capture = self._fault_injection.capture_grid_snapshot()
+            self._fault_injection._last_capture = capture
+
+            # Let the model decide — it determines normal vs fault
+            prediction = self._fault_detection.run_inference(
+                capture.voltage_seq, capture.current_seq
+            )
+            prediction.step_detected = current_step
+
+            logger.info(f"Grid monitor [step {current_step}]: "
+                        f"is_fault={prediction.is_fault}, "
+                        f"type={prediction.fault_type}, "
+                        f"confidence={prediction.detection_confidence}")
+
+            # Restore simulation mode after snapshot captures
+            if self._mode == "real_data":
+                import opendssdirect as dss_direct
+                dss_direct.Text.Command("Set Mode=Daily")
+                dss_direct.Text.Command("Set Stepsize=15m")
+                dss_direct.Text.Command("Set Number=1")
+
+            return prediction
+        except Exception as e:
+            logger.error(f"Continuous inference failed: {e}", exc_info=True)
+            return None
 
     async def start(self, hours: int = 24, speed: float = 1.0,
                     mode: str = "synthetic") -> Dict[str, Any]:
@@ -171,6 +292,8 @@ class SimulationService:
         self._current_hour = 0.0
         self._mode = mode
         self._history.clear()
+        self._current_step = 0
+        self._latest_prediction = None
 
         # Start simulation loop in background
         if mode == "real_data":
@@ -211,6 +334,14 @@ class SimulationService:
                 # Get current state
                 self._current_state = self._dss.get_grid_state()
                 self._current_state.timestamp = self._current_hour
+
+                # ── Fault handling (still applies queued faults to the circuit) ──
+                self._fault_injection.apply_queued_fault(self._current_step)
+
+                # ── Continuous grid monitoring (runs every step, model decides) ──
+                self._latest_prediction = self._run_continuous_inference(self._current_step)
+
+                self._current_step += 1
 
                 # Log warnings for non-convergence or violations
                 if not self._current_state.converged:
@@ -297,6 +428,14 @@ class SimulationService:
                 )
                 self._current_state.voltage_violations = self._dss._check_voltage_violations(self._current_state.buses)
                 self._current_state.overloaded_elements = self._dss._check_overloads()
+
+                # ── Fault handling (still applies queued faults to the circuit) ──
+                self._fault_injection.apply_queued_fault(self._current_step)
+
+                # ── Continuous grid monitoring (runs every step, model decides) ──
+                self._latest_prediction = self._run_continuous_inference(self._current_step)
+
+                self._current_step += 1
 
                 if not converged:
                     logger.warning(
@@ -410,6 +549,7 @@ class SimulationService:
                 pass
             self._simulation_task = None
 
+        self._latest_prediction = None
         logger.info("Simulation stopped")
         return {"success": True, "message": "Simulation stopped"}
 
