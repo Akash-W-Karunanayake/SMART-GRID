@@ -218,6 +218,34 @@ class ForecastResponse(BaseModelNoProtected):
     model_info: Optional[Dict[str, Any]] = None
 
 
+# ============== Solar ML Forecasting Schemas ==============
+
+class SolarPredictionPoint(BaseModel):
+    timestamp: str
+    predicted_mw: float
+    actual_mw: Optional[float] = None
+    rf_pred: Optional[float] = None
+    lstm_pred: Optional[float] = None
+
+
+class SolarDayDataResponse(BaseModel):
+    date: str
+    next_date: str
+    actual_mw: List[float]
+    predicted_next_day_mw: List[float]
+
+
+class SolarForecastResponse(BaseModelNoProtected):
+    forecast_type: str = "solar_ml"
+    target_date: str
+    points: List[SolarPredictionPoint]
+    installed_capacity_mw: float
+    model_info: Optional[Dict[str, Any]] = None
+    mae: Optional[float] = None
+    rmse: Optional[float] = None
+    mape: Optional[float] = None
+
+
 # ============== Self-Healing Schemas (for future MARL integration) ==============
 
 class FaultEvent(BaseModel):

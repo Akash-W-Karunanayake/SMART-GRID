@@ -22,6 +22,7 @@ from api.routes import grid_router, simulation_router, forecasting_router, diagn
 from api.websockets import websocket_endpoint, manager
 from services import opendss_service
 from services.fault_detection_service import fault_detection_service
+from services.solar_forecast_service import solar_forecast_service
 
 # Configure logging
 logging.basicConfig(
@@ -60,6 +61,13 @@ async def lifespan(app: FastAPI):
             logger.warning("Fault detection model failed to load — inference unavailable")
     except Exception as e:
         logger.error(f"Error loading fault detection model: {e}")
+
+    # Load solar forecast models
+    try:
+        solar_forecast_service.load_models()
+        logger.info("Solar forecast models loaded successfully")
+    except Exception as e:
+        logger.error(f"Solar forecast model loading failed: {e}")
 
     logger.info(f"API documentation available at: http://{settings.HOST}:{settings.PORT}/docs")
     logger.info(f"WebSocket endpoint: ws://{settings.HOST}:{settings.PORT}/ws")
