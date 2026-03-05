@@ -142,3 +142,14 @@ data/raw/netload/*
 data/processed/netload/*
 !data/raw/netload/.gitkeep
 !data/processed/netload/.gitkeep
+
+# model artifacts / caches
+notebooks/artifacts_f10/
+notebooks/denoise_cache/
+
+# common python junk
+__pycache__/
+.ipynb_checkpoints/
+*.pkl
+*.pt
+*.npy
