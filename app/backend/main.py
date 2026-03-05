@@ -18,7 +18,7 @@ from contextlib import asynccontextmanager
 import logging
 
 from config import settings
-from api.routes import grid_router, simulation_router, forecasting_router, diagnostics_router, pipeline_router
+from api.routes import grid_router, simulation_router, forecasting_router, diagnostics_router, pipeline_router, netload_router
 from api.websockets import websocket_endpoint, manager
 from services import opendss_service
 from services.fault_detection_service import fault_detection_service
@@ -119,6 +119,7 @@ app.add_middleware(
 app.include_router(grid_router, prefix="/api/v1")
 app.include_router(simulation_router, prefix="/api/v1")
 app.include_router(forecasting_router, prefix="/api/v1")
+app.include_router(netload_router, prefix="/api/v1") 
 app.include_router(diagnostics_router, prefix="/api/v1")
 app.include_router(pipeline_router, prefix="/api/v1")
 

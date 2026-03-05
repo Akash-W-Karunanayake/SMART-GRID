@@ -146,6 +146,10 @@ class ApiService {
     });
   }
 
+  async forecastNetLoadByDate(targetDate: string) {
+    return this.request(`/netload/forecast?target_date=${targetDate}`);
+  } 
+
   async detectImbalance() {
     return this.request('/forecasting/imbalance-detection');
   }

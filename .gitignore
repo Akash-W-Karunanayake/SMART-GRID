@@ -153,3 +153,5 @@ __pycache__/
 *.pkl
 *.pt
 *.npy
+
+app/backend/artifacts_f10/

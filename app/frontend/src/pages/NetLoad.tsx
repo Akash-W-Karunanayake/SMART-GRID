@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { BarChart3, RefreshCw, Battery, AlertCircle, CheckCircle } from 'lucide-react';
 import {
-  LineChart,
   Line,
   XAxis,
   YAxis,
@@ -9,23 +8,26 @@ import {
   Tooltip,
   ResponsiveContainer,
   ReferenceLine,
-  Area,
   ComposedChart,
 } from 'recharts';
 import api from '../services/api';
-import type { ForecastResponse } from '../types';
+
+type NetLoadPoint = { timestamp: string; yhat_mw: number };
+type NetLoadForecastResponse = { target_date: string; issue_time: string; points: NetLoadPoint[] };
 
 export default function NetLoad() {
-  const [netLoadForecast, setNetLoadForecast] = useState<ForecastResponse | null>(null);
+  const [netLoadForecast, setNetLoadForecast] = useState<NetLoadForecastResponse | null>(null);
   const [operatorData, setOperatorData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
-  const [horizonHours, setHorizonHours] = useState(24);
+
+  // default can be any valid date; keep one you tested in Swagger
+  const [targetDate, setTargetDate] = useState('2025-08-10');
 
   const loadData = async () => {
     setLoading(true);
     try {
       const [netLoad, opData] = await Promise.all([
-        api.forecastNetLoad(horizonHours),
+        api.forecastNetLoadByDate(targetDate) as Promise<NetLoadForecastResponse>,
         api.getGridOperatorData(),
       ]);
       setNetLoadForecast(netLoad);
@@ -39,15 +41,15 @@ export default function NetLoad() {
 
   useEffect(() => {
     loadData();
-  }, [horizonHours]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [targetDate]);
 
-  const chartData = netLoadForecast?.points.map((point, i) => ({
-    hour: i,
-    netLoad: point.value,
-    lower: point.lower_bound,
-    upper: point.upper_bound,
-    state: point.value > 100 ? 'undersupply' : point.value < -50 ? 'oversupply' : 'balanced',
-  })) || [];
+  const chartData =
+    netLoadForecast?.points.map((point, i) => ({
+      hour: i,
+      netLoad: point.yhat_mw,
+      state: point.yhat_mw > 100 ? 'undersupply' : point.yhat_mw < -50 ? 'oversupply' : 'balanced',
+    })) || [];
 
   return (
     <div className="space-y-6">
@@ -62,11 +64,7 @@ export default function NetLoad() {
             Probabilistic net load forecasting with power flow validation for renewable-based microgrids
           </p>
         </div>
-        <button
-          onClick={loadData}
-          disabled={loading}
-          className="btn-secondary flex items-center"
-        >
+        <button onClick={loadData} disabled={loading} className="btn-secondary flex items-center">
           <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
           Refresh
         </button>
@@ -95,80 +93,50 @@ export default function NetLoad() {
 
       {/* Controls */}
       <div className="flex items-center space-x-4">
-        <label className="text-slate-400 text-sm">Forecast Horizon:</label>
-        <select
-          value={horizonHours}
-          onChange={(e) => setHorizonHours(Number(e.target.value))}
+        <label className="text-slate-400 text-sm">Target Date:</label>
+        <input
+          type="date"
+          value={targetDate}
+          onChange={(e) => setTargetDate(e.target.value)}
           className="input-field"
-        >
-          <option value={12}>12 hours</option>
-          <option value={24}>24 hours</option>
-          <option value={48}>48 hours</option>
-          <option value={72}>72 hours</option>
-        </select>
+          min="2025-07-15"
+          max="2025-08-31"
+        />
       </div>
 
-      {/* Main Chart with Uncertainty Bands */}
+      {/* Main Chart */}
       <div className="card">
-        <h2 className="card-header">Probabilistic Net Load Forecast</h2>
+        <h2 className="card-header">Net Load Forecast (Day-ahead)</h2>
         <p className="text-slate-400 text-sm mb-4">
           Net Load = Load Demand - Renewable Generation (positive = undersupply, negative = oversupply)
         </p>
+
         <div className="h-80">
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-              <XAxis dataKey="hour" stroke="#9ca3af" label={{ value: 'Hours', position: 'bottom' }} />
-              <YAxis stroke="#9ca3af" label={{ value: 'kW', angle: -90, position: 'insideLeft' }} />
+              <XAxis dataKey="hour" stroke="#9ca3af" label={{ value: '15-min Steps (0..95)', position: 'bottom' }} />
+              <YAxis stroke="#9ca3af" label={{ value: 'MW', angle: -90, position: 'insideLeft' }} />
               <Tooltip
                 contentStyle={{
                   backgroundColor: '#1e293b',
                   border: '1px solid #334155',
                   borderRadius: '8px',
                 }}
-                formatter={(value: any, name: string) => {
-                  if (name === 'Uncertainty Band') return null;
-                  return [`${value?.toFixed(1)} kW`, name];
-                }}
+                formatter={(value: any, name: string) => [`${Number(value).toFixed(3)} MW`, name]}
               />
               <ReferenceLine y={0} stroke="#6b7280" strokeDasharray="3 3" />
               <ReferenceLine y={100} stroke="#ef4444" strokeDasharray="3 3" label="Undersupply Threshold" />
               <ReferenceLine y={-50} stroke="#3b82f6" strokeDasharray="3 3" label="Oversupply Threshold" />
-              <Area
-                type="monotone"
-                dataKey="upper"
-                stroke="transparent"
-                fill="#8b5cf6"
-                fillOpacity={0.2}
-                name="Uncertainty Band"
-              />
-              <Area
-                type="monotone"
-                dataKey="lower"
-                stroke="transparent"
-                fill="#1e293b"
-                fillOpacity={1}
-                name="Uncertainty Band"
-              />
-              <Line
-                type="monotone"
-                dataKey="netLoad"
-                stroke="#8b5cf6"
-                strokeWidth={2}
-                dot={false}
-                name="Net Load"
-              />
+              <Line type="monotone" dataKey="netLoad" stroke="#8b5cf6" strokeWidth={2} dot={false} name="Net Load" />
             </ComposedChart>
           </ResponsiveContainer>
         </div>
+
         <div className="flex justify-center space-x-6 mt-4 text-sm">
           <div className="flex items-center">
             <div className="w-3 h-3 bg-purple-500 rounded mr-2" />
-            <span className="text-slate-400">Net Load (Mean)</span>
-          </div>
-          <div className="flex items-center">
-            <div className="w-3 h-3 bg-purple-500/30 rounded mr-2" />
-            <span className="text-slate-400">Prediction Interval</span>
+            <span className="text-slate-400">Net Load (Forecast)</span>
           </div>
         </div>
       </div>
@@ -208,22 +176,22 @@ export default function NetLoad() {
             Battery Scheduling
           </h2>
           {operatorData?.storage_recommendation && (
-            <div className={`p-4 rounded-lg ${
-              operatorData.storage_recommendation.action === 'charge'
-                ? 'bg-blue-900/30 border border-blue-700'
-                : operatorData.storage_recommendation.action === 'discharge'
-                ? 'bg-amber-900/30 border border-amber-700'
-                : 'bg-slate-700/50'
-            }`}>
+            <div
+              className={`p-4 rounded-lg ${
+                operatorData.storage_recommendation.action === 'charge'
+                  ? 'bg-blue-900/30 border border-blue-700'
+                  : operatorData.storage_recommendation.action === 'discharge'
+                  ? 'bg-amber-900/30 border border-amber-700'
+                  : 'bg-slate-700/50'
+              }`}
+            >
               <p className="text-lg font-semibold text-white capitalize">
                 {operatorData.storage_recommendation.action}
               </p>
               <p className="text-sm text-slate-300 mt-1">
                 Target SoC: {operatorData.storage_recommendation.target_soc_percent}%
               </p>
-              <p className="text-xs text-slate-400 mt-2">
-                {operatorData.storage_recommendation.reason}
-              </p>
+              <p className="text-xs text-slate-400 mt-2">{operatorData.storage_recommendation.reason}</p>
             </div>
           )}
         </div>
@@ -239,9 +207,11 @@ export default function NetLoad() {
               <div
                 key={i}
                 className={`p-3 rounded-lg ${
-                  alert.severity === 'high' ? 'bg-red-900/30 border-l-2 border-red-500' :
-                  alert.severity === 'medium' ? 'bg-amber-900/30 border-l-2 border-amber-500' :
-                  'bg-blue-900/30 border-l-2 border-blue-500'
+                  alert.severity === 'high'
+                    ? 'bg-red-900/30 border-l-2 border-red-500'
+                    : alert.severity === 'medium'
+                    ? 'bg-amber-900/30 border-l-2 border-amber-500'
+                    : 'bg-blue-900/30 border-l-2 border-blue-500'
                 }`}
               >
                 <p className="text-sm text-white">{alert.message}</p>
@@ -264,7 +234,7 @@ export default function NetLoad() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="p-4 bg-red-900/20 rounded-lg border border-red-800">
             <h3 className="font-semibold text-red-400 mb-2">Undersupply</h3>
-            <p className="text-sm text-slate-300">Net Load {'>'} 100 kW</p>
+            <p className="text-sm text-slate-300">Net Load {'>'} 100 MW</p>
             <ul className="text-xs text-slate-400 mt-2 space-y-1">
               <li>• Discharge battery storage</li>
               <li>• Activate backup generation</li>
@@ -273,7 +243,7 @@ export default function NetLoad() {
           </div>
           <div className="p-4 bg-green-900/20 rounded-lg border border-green-800">
             <h3 className="font-semibold text-green-400 mb-2">Balanced</h3>
-            <p className="text-sm text-slate-300">-50 kW {'<'} Net Load {'<'} 100 kW</p>
+            <p className="text-sm text-slate-300">-50 MW {'<'} Net Load {'<'} 100 MW</p>
             <ul className="text-xs text-slate-400 mt-2 space-y-1">
               <li>• Normal operation</li>
               <li>• Monitor for changes</li>
@@ -282,7 +252,7 @@ export default function NetLoad() {
           </div>
           <div className="p-4 bg-blue-900/20 rounded-lg border border-blue-800">
             <h3 className="font-semibold text-blue-400 mb-2">Oversupply</h3>
-            <p className="text-sm text-slate-300">Net Load {'<'} -50 kW</p>
+            <p className="text-sm text-slate-300">Net Load {'<'} -50 MW</p>
             <ul className="text-xs text-slate-400 mt-2 space-y-1">
               <li>• Charge battery storage</li>
               <li>• Curtail renewables if needed</li>
@@ -295,9 +265,8 @@ export default function NetLoad() {
       {/* Model Info */}
       <div className="card bg-slate-700/50">
         <p className="text-slate-400 text-sm">
-          <span className="text-amber-400 font-medium">Note:</span> Currently displaying mock forecast data.
-          The ICEEMDAN + Transformer + GP-RML model will be integrated when training is complete.
-          Power flow validation using pandapower/OpenDSS will verify grid safety of scheduled actions.
+          <span className="text-amber-400 font-medium">Note:</span> Net load curve is now served by the backend
+          Transformer model. GP-RML uncertainty bands will be added later.
         </p>
       </div>
     </div>
