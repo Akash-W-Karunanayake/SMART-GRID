@@ -1,7 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { BarChart3, RefreshCw, Battery, AlertCircle, CheckCircle } from 'lucide-react';
 import {
-  LineChart,
   Line,
   XAxis,
   YAxis,
@@ -9,45 +8,208 @@ import {
   Tooltip,
   ResponsiveContainer,
   ReferenceLine,
-  Area,
   ComposedChart,
+  Legend,
 } from 'recharts';
 import api from '../services/api';
-import type { ForecastResponse } from '../types';
+
+type NetLoadPoint = { timestamp: string; yhat_mw: number };
+
+// include run_id so we can fetch imbalance/actions from DB
+type NetLoadForecastResponse = {
+  target_date: string;
+  issue_time: string;
+  run_id?: number;
+  computed_at?: string;
+  points: NetLoadPoint[];
+};
+
+type ImbalanceItem = {
+  step_idx: number;
+  timestamp: string;
+  yhat_mw: number;
+  label: 'oversupply' | 'balanced' | 'undersupply';
+  severity: number;
+  recommended_action: string; // "Charge battery." / "Discharge battery." / "No action."
+};
+
+type NetLoadImbalanceResponse = {
+  run_id: number;
+  target_date: string;
+  issue_time: string;
+  threshold_X_mw: number;
+  counts: { oversupply: number; balanced: number; undersupply: number };
+  top_k: number;
+  worst_undersupply: ImbalanceItem[];
+  worst_oversupply: ImbalanceItem[];
+  note?: string;
+};
+
+function fmtTime(tsISO: string) {
+  const d = new Date(tsISO);
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+const fmtLocalDateTime = (iso: string) =>
+  new Date(iso).toLocaleString([], {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
 
 export default function NetLoad() {
-  const [netLoadForecast, setNetLoadForecast] = useState<ForecastResponse | null>(null);
-  const [operatorData, setOperatorData] = useState<any>(null);
-  const [loading, setLoading] = useState(false);
-  const [horizonHours, setHorizonHours] = useState(24);
+  const [netLoadForecast, setNetLoadForecast] = useState<NetLoadForecastResponse | null>(null);
+  const [imbalance, setImbalance] = useState<NetLoadImbalanceResponse | null>(null);
 
-  const loadData = async () => {
+  // existing operator data section kept (optional)
+  const [operatorData, setOperatorData] = useState<any>(null);
+
+  const [loading, setLoading] = useState(false);
+
+  // user chooses date; no auto-run
+  const [targetDate, setTargetDate] = useState('2025-08-10');
+
+  useEffect(() => {
+  const appHeader = document.querySelector('header') as HTMLElement | null;
+
+  if (appHeader) {
+    appHeader.style.display = 'none';
+  }
+
+  return () => {
+    if (appHeader) {
+      appHeader.style.display = '';
+    }
+  };
+  }, []);
+
+  const runForecast = async () => {
     setLoading(true);
     try {
+      // 1) run forecast (this also saves run + points in DB)
       const [netLoad, opData] = await Promise.all([
-        api.forecastNetLoad(horizonHours),
+        api.forecastNetLoadByDate(targetDate) as Promise<NetLoadForecastResponse>,
         api.getGridOperatorData(),
       ]);
+
       setNetLoadForecast(netLoad);
       setOperatorData(opData);
+
+      // 2) fetch imbalance/actions for that run_id (decision support)
+      const runId = netLoad.run_id;
+      if (runId) {
+        const imb = (await api.getNetLoadImbalance(runId)) as NetLoadImbalanceResponse;
+        setImbalance(imb);
+      } else {
+        setImbalance(null);
+      }
     } catch (error) {
-      console.error('Failed to load data:', error);
+      console.error('Failed to run forecast:', error);
+      setImbalance(null);
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    loadData();
-  }, [horizonHours]);
+  // --- KPIs computed from 96 points ---
+  const kpis = useMemo(() => {
+    const pts = netLoadForecast?.points ?? [];
+    if (!pts.length) return null;
 
-  const chartData = netLoadForecast?.points.map((point, i) => ({
-    hour: i,
-    netLoad: point.value,
-    lower: point.lower_bound,
-    upper: point.upper_bound,
-    state: point.value > 100 ? 'undersupply' : point.value < -50 ? 'oversupply' : 'balanced',
-  })) || [];
+    let maxV = -Infinity,
+      minV = Infinity;
+    let maxT = pts[0]?.timestamp ?? '';
+    let minT = pts[0]?.timestamp ?? '';
+    let sum = 0;
+
+    for (const p of pts) {
+      const v = p.yhat_mw;
+      sum += v;
+      if (v > maxV) {
+        maxV = v;
+        maxT = p.timestamp;
+      }
+      if (v < minV) {
+        minV = v;
+        minT = p.timestamp;
+      }
+    }
+    const avg = sum / pts.length;
+
+    return {
+      peakMW: maxV,
+      peakTime: maxT,
+      minMW: minV,
+      minTime: minT,
+      avgMW: avg,
+    };
+  }, [netLoadForecast]);
+
+  // --- chart data + state classification based on imbalance threshold ---
+  const thresholdX = imbalance?.threshold_X_mw ?? null;
+
+  const chartData = useMemo(() => {
+    const pts = netLoadForecast?.points ?? [];
+    const X = thresholdX ?? 0;
+
+    return pts.map((p) => {
+      const state =
+        thresholdX == null
+          ? 'unknown'
+          : p.yhat_mw > X
+          ? 'undersupply'
+          : p.yhat_mw < -X
+          ? 'oversupply'
+          : 'balanced';
+
+      return {
+        time: fmtTime(p.timestamp),
+        netLoad: p.yhat_mw,
+        state,
+        timestamp: p.timestamp,
+      };
+    });
+  }, [netLoadForecast, thresholdX]);
+
+  // --- key-hours table: every 2 hours => indices 0, 8, 16, ... (8 steps = 2 hours) ---
+  const keyHours = useMemo(() => {
+    const pts = netLoadForecast?.points ?? [];
+    if (!pts.length) return [];
+
+    const X = thresholdX ?? 0;
+    const rows = [];
+    for (let i = 0; i < pts.length; i += 8) {
+      const p = pts[i];
+      const label =
+        thresholdX == null
+          ? '—'
+          : p.yhat_mw > X
+          ? 'Undersupply'
+          : p.yhat_mw < -X
+          ? 'Oversupply'
+          : 'Balanced';
+
+      const action =
+        thresholdX == null
+          ? '—'
+          : label === 'Undersupply'
+          ? 'Discharge battery.'
+          : label === 'Oversupply'
+          ? 'Charge battery.'
+          : 'No action.';
+
+      rows.push({
+        time: fmtTime(p.timestamp),
+        mw: p.yhat_mw,
+        label,
+        action,
+      });
+    }
+    return rows;
+  }, [netLoadForecast, thresholdX]);
 
   return (
     <div className="space-y-6">
@@ -58,248 +220,335 @@ export default function NetLoad() {
             <BarChart3 className="w-6 h-6 mr-2 text-purple-400" />
             Net Load Forecasting
           </h1>
-          <p className="text-slate-400">
-            Probabilistic net load forecasting with power flow validation for renewable-based microgrids
-          </p>
+          
+          {netLoadForecast && (
+            <p className="text-slate-400 text-sm mt-1">
+              Target: <span className="text-white">{netLoadForecast.target_date}</span> • Issue time:{' '}
+              <span className="text-white">{netLoadForecast.issue_time}</span>
+              
+              {netLoadForecast.computed_at ? (
+                <>
+                  {' '}
+                  • Computed at:{' '}
+                  <span className="text-white">{fmtLocalDateTime(netLoadForecast.computed_at)}</span>
+                </>
+                
+              ) : null}
+            </p>
+          )}
         </div>
-        <button
-          onClick={loadData}
-          disabled={loading}
-          className="btn-secondary flex items-center"
-        >
+
+        </div>
+
+      
+      {/* Controls (button-only) */}
+      <div className="flex flex-wrap items-center gap-3">
+        <label className="text-slate-400 text-sm">Target Date:</label>
+        <input
+          type="date"
+          value={targetDate}
+          onChange={(e) => setTargetDate(e.target.value)}
+          className="input-field"
+          min="2025-07-15"
+          max="2025-08-31"
+        />
+
+        <button onClick={runForecast} disabled={loading} className="btn-primary flex items-center">
           <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-          Refresh
+          Forecast
         </button>
+
+        <span className="text-slate-500 text-xs">
+          Select a date then click <span className="text-slate-300">Forecast</span>.
+        </span>
       </div>
 
-      {/* Research Info Banner */}
-      <div className="card bg-purple-900/30 border-purple-700">
-        <div className="flex items-start">
-          <BarChart3 className="w-6 h-6 text-purple-400 flex-shrink-0" />
-          <div className="ml-4">
-            <h3 className="text-white font-medium">Component 4: IT22891204 - Wickramaratne A J S de Z</h3>
-            <p className="text-slate-300 text-sm mt-1">
-              End-to-end framework that couples advanced hybrid net load forecasting with schedule-aware
-              grid validation. Uses ICEEMDAN for signal decomposition, Transformer for temporal predictions,
-              and Gaussian Process (GP-RML) for bias correction and uncertainty quantification.
-            </p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              <span className="px-2 py-1 bg-purple-800 text-purple-200 text-xs rounded">ICEEMDAN</span>
-              <span className="px-2 py-1 bg-purple-800 text-purple-200 text-xs rounded">Transformer</span>
-              <span className="px-2 py-1 bg-purple-800 text-purple-200 text-xs rounded">GP-RML</span>
-              <span className="px-2 py-1 bg-purple-800 text-purple-200 text-xs rounded">Power Flow</span>
+      {/* Tomorrow at a glance (KPIs) */}
+      <div className="card">
+        <h2 className="card-header">Tomorrow at a Glance</h2>
+        {!kpis || !imbalance ? (
+          <p className="text-slate-400 text-sm">Run a forecast to see summary metrics.</p>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+            <div className="p-3 bg-slate-700/50 rounded-lg">
+              <p className="text-slate-400 text-xs">Peak MW</p>
+              <p className="text-white text-lg font-semibold">{kpis.peakMW.toFixed(2)}</p>
+              <p className="text-slate-400 text-xs">{fmtTime(kpis.peakTime)}</p>
+            </div>
+            <div className="p-3 bg-slate-700/50 rounded-lg">
+              <p className="text-slate-400 text-xs">Min MW</p>
+              <p className="text-white text-lg font-semibold">{kpis.minMW.toFixed(2)}</p>
+              <p className="text-slate-400 text-xs">{fmtTime(kpis.minTime)}</p>
+            </div>
+            <div className="p-3 bg-slate-700/50 rounded-lg">
+              <p className="text-slate-400 text-xs">Avg MW</p>
+              <p className="text-white text-lg font-semibold">{kpis.avgMW.toFixed(2)}</p>
+              <p className="text-slate-400 text-xs">Daily mean</p>
+            </div>
+            <div className="p-3 bg-slate-700/50 rounded-lg">
+              <p className="text-slate-400 text-xs">Undersupply</p>
+              <p className="text-red-400 text-lg font-semibold">{imbalance.counts.undersupply}</p>
+              <p className="text-slate-400 text-xs">Intervals</p>
+            </div>
+            <div className="p-3 bg-slate-700/50 rounded-lg">
+              <p className="text-slate-400 text-xs">Oversupply</p>
+              <p className="text-blue-400 text-lg font-semibold">{imbalance.counts.oversupply}</p>
+              <p className="text-slate-400 text-xs">Intervals</p>
+            </div>
+            <div className="p-3 bg-slate-700/50 rounded-lg">
+              <p className="text-slate-400 text-xs">Balanced</p>
+              <p className="text-green-400 text-lg font-semibold">{imbalance.counts.balanced}</p>
+              <p className="text-slate-400 text-xs">Intervals</p>
             </div>
           </div>
-        </div>
+        )}
       </div>
 
-      {/* Controls */}
-      <div className="flex items-center space-x-4">
-        <label className="text-slate-400 text-sm">Forecast Horizon:</label>
-        <select
-          value={horizonHours}
-          onChange={(e) => setHorizonHours(Number(e.target.value))}
-          className="input-field"
-        >
-          <option value={12}>12 hours</option>
-          <option value={24}>24 hours</option>
-          <option value={48}>48 hours</option>
-          <option value={72}>72 hours</option>
-        </select>
-      </div>
-
-      {/* Main Chart with Uncertainty Bands */}
+      {/* Key-hours table (every 2 hours) */}
       <div className="card">
-        <h2 className="card-header">Probabilistic Net Load Forecast</h2>
-        <p className="text-slate-400 text-sm mb-4">
-          Net Load = Load Demand - Renewable Generation (positive = undersupply, negative = oversupply)
-        </p>
-        <div className="h-80">
+        <h2 className="card-header">Key Hours (Every 2 Hours)</h2>
+        {!netLoadForecast ? (
+          <p className="text-slate-400 text-sm">Run a forecast to view key-hour values.</p>
+        ) : (
+          <div className="overflow-auto">
+            <table className="w-full text-sm">
+              <thead className="text-slate-400">
+                <tr>
+                  <th className="text-left py-2">Time</th>
+                  <th className="text-left py-2">Forecast (MW)</th>
+                  <th className="text-left py-2">State</th>
+                  <th className="text-left py-2">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {keyHours.map((r, idx) => (
+                  <tr key={idx} className="border-t border-slate-700">
+                    <td className="py-2 text-slate-200">{r.time}</td>
+                    <td className="py-2 text-slate-200">{r.mw.toFixed(2)}</td>
+                    <td className="py-2 text-slate-200">{r.label}</td>
+                    <td className="py-2 text-slate-200">{r.action}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Main Chart */}
+          
+      <div className="card">
+        <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+          <div>
+            <h2 className="card-header mb-1">Net Load Forecast (Day-ahead)</h2>
+
+            {netLoadForecast ? (
+              <div className="flex flex-wrap items-center gap-3 mt-2">
+                <span className="rounded-md border border-blue-500/30 bg-blue-500/10 px-3 py-1.5 text-sm text-blue-200 font-medium">
+                  Forecast Date: {netLoadForecast.target_date}
+                </span>
+                <span className="text-slate-400 text-sm">
+                  Net Load = Load Demand − Renewable Generation
+                </span>
+              </div>
+            ) : (
+              <p className="text-slate-400 text-sm">
+                Net Load = Load Demand − Renewable Generation
+              </p>
+            )}
+          </div>
+
+          {thresholdX != null && (
+            <div className="flex flex-wrap gap-2 text-xs">
+              <div className="flex items-center gap-2 rounded-md border border-slate-700 bg-slate-800/60 px-3 py-1.5 text-slate-300">
+                <span className="inline-block h-2.5 w-2.5 rounded-full bg-violet-400" />
+                Net Load
+              </div>
+              <div className="flex items-center gap-2 rounded-md border border-slate-700 bg-slate-800/60 px-3 py-1.5 text-slate-300">
+                <span className="inline-block h-[2px] w-4 bg-red-500" />
+                Undersupply Threshold (+{thresholdX.toFixed(2)} MW)
+              </div>
+              <div className="flex items-center gap-2 rounded-md border border-slate-700 bg-slate-800/60 px-3 py-1.5 text-slate-300">
+                <span className="inline-block h-[2px] w-4 bg-blue-500" />
+                Oversupply Threshold (-{thresholdX.toFixed(2)} MW)
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="mt-5 h-[340px] rounded-xl border border-slate-700/60 bg-slate-800/30 p-4">
           <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-              <XAxis dataKey="hour" stroke="#9ca3af" label={{ value: 'Hours', position: 'bottom' }} />
-              <YAxis stroke="#9ca3af" label={{ value: 'kW', angle: -90, position: 'insideLeft' }} />
+            <ComposedChart
+              data={chartData}
+              margin={{ top: 10, right: 12, left: 0, bottom: 8 }}
+            >
+              <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={true} horizontal={true} />
+
+              <XAxis
+                dataKey="time"
+                stroke="#94a3b8"
+                tick={{ fontSize: 11 }}
+                minTickGap={28}
+                tickLine={false}
+                axisLine={{ stroke: '#475569' }}
+              />
+
+              <YAxis
+                stroke="#94a3b8"
+                tick={{ fontSize: 11 }}
+                tickLine={false}
+                axisLine={{ stroke: '#475569' }}
+                width={48}
+                label={{ value: 'MW', angle: -90, position: 'insideLeft', fill: '#94a3b8' }}
+              />
+
               <Tooltip
                 contentStyle={{
-                  backgroundColor: '#1e293b',
+                  backgroundColor: '#0f172a',
                   border: '1px solid #334155',
-                  borderRadius: '8px',
+                  borderRadius: '10px',
+                  color: '#e2e8f0',
                 }}
+                labelStyle={{ color: '#cbd5e1', fontSize: 12 }}
                 formatter={(value: any, name: string) => {
-                  if (name === 'Uncertainty Band') return null;
-                  return [`${value?.toFixed(1)} kW`, name];
+                  if (name === 'Net Load') return [`${Number(value).toFixed(2)} MW`, 'Net Load'];
+                  return [`${Number(value).toFixed(2)} MW`, name];
                 }}
+                labelFormatter={(label) => `Time: ${label}`}
               />
-              <ReferenceLine y={0} stroke="#6b7280" strokeDasharray="3 3" />
-              <ReferenceLine y={100} stroke="#ef4444" strokeDasharray="3 3" label="Undersupply Threshold" />
-              <ReferenceLine y={-50} stroke="#3b82f6" strokeDasharray="3 3" label="Oversupply Threshold" />
-              <Area
-                type="monotone"
-                dataKey="upper"
-                stroke="transparent"
-                fill="#8b5cf6"
-                fillOpacity={0.2}
-                name="Uncertainty Band"
-              />
-              <Area
-                type="monotone"
-                dataKey="lower"
-                stroke="transparent"
-                fill="#1e293b"
-                fillOpacity={1}
-                name="Uncertainty Band"
-              />
+
+              <ReferenceLine y={0} stroke="#64748b" strokeDasharray="4 4" />
+
+              {thresholdX != null && (
+                <>
+                  <ReferenceLine
+                    y={thresholdX}
+                    stroke="#ef4444"
+                    strokeDasharray="4 4"
+                  />
+                  <ReferenceLine
+                    y={-thresholdX}
+                    stroke="#3b82f6"
+                    strokeDasharray="4 4"
+                  />
+                </>
+              )}
+
               <Line
                 type="monotone"
                 dataKey="netLoad"
                 stroke="#8b5cf6"
-                strokeWidth={2}
+                strokeWidth={3}
                 dot={false}
+                activeDot={{ r: 4 }}
                 name="Net Load"
               />
             </ComposedChart>
           </ResponsiveContainer>
         </div>
-        <div className="flex justify-center space-x-6 mt-4 text-sm">
-          <div className="flex items-center">
-            <div className="w-3 h-3 bg-purple-500 rounded mr-2" />
-            <span className="text-slate-400">Net Load (Mean)</span>
+
+        {netLoadForecast && (
+          <div className="mt-3 flex items-center justify-center">
+            <span className="rounded-md border border-slate-700 bg-slate-800/50 px-2.5 py-1 text-xs text-slate-400">
+              Forecast Date:{' '}
+              <span className="text-slate-200 font-medium">
+                {netLoadForecast.target_date}
+              </span>
+            </span>
           </div>
-          <div className="flex items-center">
-            <div className="w-3 h-3 bg-purple-500/30 rounded mr-2" />
-            <span className="text-slate-400">Prediction Interval</span>
-          </div>
+        )}
+
+        <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-slate-400">
+          <span className="rounded-md border border-slate-700 bg-slate-800/50 px-2.5 py-1">
+            Positive net load = undersupply
+          </span>
+          <span className="rounded-md border border-slate-700 bg-slate-800/50 px-2.5 py-1">
+            Negative net load = oversupply
+          </span>
+          {imbalance?.note && (
+            <span className="rounded-md border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-amber-300">
+              Note: {imbalance.note}
+            </span>
+          )}
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Next Hour Summary */}
-        <div className="card">
-          <h2 className="card-header">Next Hour Forecast</h2>
-          {operatorData?.forecast_summary && (
-            <div className="space-y-4">
-              <div className="flex justify-between items-center p-3 bg-slate-700/50 rounded-lg">
-                <span className="text-slate-400">Load</span>
-                <span className="text-white font-semibold">
-                  {operatorData.forecast_summary.next_hour_load_kw} kW
-                </span>
-              </div>
-              <div className="flex justify-between items-center p-3 bg-slate-700/50 rounded-lg">
-                <span className="text-slate-400">Solar</span>
-                <span className="text-green-400 font-semibold">
-                  {operatorData.forecast_summary.next_hour_solar_kw} kW
-                </span>
-              </div>
-              <div className="flex justify-between items-center p-3 bg-purple-700/50 rounded-lg">
-                <span className="text-slate-400">Net Load</span>
-                <span className="text-purple-400 font-semibold">
-                  {operatorData.forecast_summary.next_hour_net_load_kw} kW
-                </span>
-              </div>
-            </div>
-          )}
-        </div>
+      
 
-        {/* Storage Recommendation */}
-        <div className="card">
-          <h2 className="card-header flex items-center">
-            <Battery className="w-5 h-5 mr-2 text-green-400" />
-            Battery Scheduling
-          </h2>
-          {operatorData?.storage_recommendation && (
-            <div className={`p-4 rounded-lg ${
-              operatorData.storage_recommendation.action === 'charge'
-                ? 'bg-blue-900/30 border border-blue-700'
-                : operatorData.storage_recommendation.action === 'discharge'
-                ? 'bg-amber-900/30 border border-amber-700'
-                : 'bg-slate-700/50'
-            }`}>
-              <p className="text-lg font-semibold text-white capitalize">
-                {operatorData.storage_recommendation.action}
-              </p>
-              <p className="text-sm text-slate-300 mt-1">
-                Target SoC: {operatorData.storage_recommendation.target_soc_percent}%
-              </p>
-              <p className="text-xs text-slate-400 mt-2">
-                {operatorData.storage_recommendation.reason}
-              </p>
-            </div>
-          )}
-        </div>
-
-        {/* Operator Alerts */}
-        <div className="card">
-          <h2 className="card-header flex items-center">
-            <AlertCircle className="w-5 h-5 mr-2 text-amber-400" />
-            Grid Operator Alerts
-          </h2>
-          <div className="space-y-2">
-            {operatorData?.alerts?.map((alert: any, i: number) => (
-              <div
-                key={i}
-                className={`p-3 rounded-lg ${
-                  alert.severity === 'high' ? 'bg-red-900/30 border-l-2 border-red-500' :
-                  alert.severity === 'medium' ? 'bg-amber-900/30 border-l-2 border-amber-500' :
-                  'bg-blue-900/30 border-l-2 border-blue-500'
-                }`}
-              >
-                <p className="text-sm text-white">{alert.message}</p>
-                <p className="text-xs text-slate-400 mt-1">{alert.action}</p>
-              </div>
-            ))}
-            {!operatorData?.alerts?.length && (
-              <div className="flex items-center text-green-400 p-3">
-                <CheckCircle className="w-5 h-5 mr-2" />
-                No alerts
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Imbalance States Legend */}
+      {/* Top actions */}
       <div className="card">
-        <h2 className="card-header">Imbalance Response Strategy</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="p-4 bg-red-900/20 rounded-lg border border-red-800">
-            <h3 className="font-semibold text-red-400 mb-2">Undersupply</h3>
-            <p className="text-sm text-slate-300">Net Load {'>'} 100 kW</p>
-            <ul className="text-xs text-slate-400 mt-2 space-y-1">
-              <li>• Discharge battery storage</li>
-              <li>• Activate backup generation</li>
-              <li>• Grid import if needed</li>
-            </ul>
+        <h2 className="card-header">Recommended Actions (Top Intervals)</h2>
+        {!imbalance ? (
+          <p className="text-slate-400 text-sm">Run a forecast to generate actions.</p>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div>
+              <h3 className="text-white font-semibold mb-2">Top Undersupply</h3>
+              <div className="overflow-auto">
+                <table className="w-full text-sm">
+                  <thead className="text-slate-400">
+                    <tr>
+                      <th className="text-left py-2">Time</th>
+                      <th className="text-left py-2">MW</th>
+                      <th className="text-left py-2">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {imbalance.worst_undersupply.map((r, idx) => (
+                      <tr key={idx} className="border-t border-slate-700">
+                        <td className="py-2 text-slate-200">{fmtTime(r.timestamp)}</td>
+                        <td className="py-2 text-slate-200">{r.yhat_mw.toFixed(2)}</td>
+                        <td className="py-2 text-slate-200">{r.recommended_action}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-white font-semibold mb-2">Top Oversupply</h3>
+              <div className="overflow-auto">
+                <table className="w-full text-sm">
+                  <thead className="text-slate-400">
+                    <tr>
+                      <th className="text-left py-2">Time</th>
+                      <th className="text-left py-2">MW</th>
+                      <th className="text-left py-2">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {imbalance.worst_oversupply.map((r, idx) => (
+                      <tr key={idx} className="border-t border-slate-700">
+                        <td className="py-2 text-slate-200">{fmtTime(r.timestamp)}</td>
+                        <td className="py-2 text-slate-200">{r.yhat_mw.toFixed(2)}</td>
+                        <td className="py-2 text-slate-200">{r.recommended_action}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <p className="text-slate-400 text-xs lg:col-span-2">
+              <span className="text-amber-400 font-medium">Note:</span> Actions assume battery storage is available.
+            </p>
           </div>
-          <div className="p-4 bg-green-900/20 rounded-lg border border-green-800">
-            <h3 className="font-semibold text-green-400 mb-2">Balanced</h3>
-            <p className="text-sm text-slate-300">-50 kW {'<'} Net Load {'<'} 100 kW</p>
-            <ul className="text-xs text-slate-400 mt-2 space-y-1">
-              <li>• Normal operation</li>
-              <li>• Monitor for changes</li>
-              <li>• Optimize efficiency</li>
-            </ul>
-          </div>
-          <div className="p-4 bg-blue-900/20 rounded-lg border border-blue-800">
-            <h3 className="font-semibold text-blue-400 mb-2">Oversupply</h3>
-            <p className="text-sm text-slate-300">Net Load {'<'} -50 kW</p>
-            <ul className="text-xs text-slate-400 mt-2 space-y-1">
-              <li>• Charge battery storage</li>
-              <li>• Curtail renewables if needed</li>
-              <li>• Grid export if available</li>
-            </ul>
-          </div>
-        </div>
+        )}
       </div>
 
-      {/* Model Info */}
-      <div className="card bg-slate-700/50">
-        <p className="text-slate-400 text-sm">
-          <span className="text-amber-400 font-medium">Note:</span> Currently displaying mock forecast data.
-          The ICEEMDAN + Transformer + GP-RML model will be integrated when training is complete.
-          Power flow validation using pandapower/OpenDSS will verify grid safety of scheduled actions.
-        </p>
+      
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        
+
+        
+        
+
+        
       </div>
+
+      
     </div>
   );
 }
