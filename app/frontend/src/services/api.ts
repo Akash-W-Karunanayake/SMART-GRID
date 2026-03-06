@@ -132,8 +132,11 @@ class ApiService {
     });
   }
 
-  async forecastSolar(horizonHours: number = 24, includeUncertainty: boolean = true) {
-    return this.request('/forecasting/solar', {
+  async forecastSolar(horizonHours: number = 24, includeUncertainty: boolean = true, targetDate?: string) {
+    const params = new URLSearchParams();
+    if (targetDate) params.set('target_date', targetDate);
+    const qs = params.toString();
+    return this.request(`/forecasting/solar${qs ? '?' + qs : ''}`, {
       method: 'POST',
       body: JSON.stringify({ horizon_hours: horizonHours, include_uncertainty: includeUncertainty }),
     });
@@ -147,25 +150,30 @@ class ApiService {
   }
 
   async forecastNetLoadByDate(targetDate: string) {
-    return this.request(`/netload/forecast?target_date=${targetDate}`);
-  } 
+  return this.request(`/netload/forecast?target_date=${targetDate}`);
+}
 
-  async getNetLoadImbalance(runId: number) {
-    // backend defaults: threshold_mode=dynamic, x=0.20, top_k=10
-    return this.request(`/netload/run/${runId}/imbalance`);
-  }
+async getNetLoadImbalance(runId: number) {
+  // backend defaults: threshold_mode=dynamic, x=0.20, top_k=10
+  return this.request(`/netload/run/${runId}/imbalance`);
+}
 
-  async detectImbalance() {
-    return this.request('/forecasting/imbalance-detection');
-  }
+async getSolarDayData(date: string) {
+  return this.request(`/forecasting/solar-day-data?date=${date}`);
+}
 
-  async getHouseholdAlerts() {
-    return this.request('/forecasting/household-alerts');
-  }
+async detectImbalance() {
+  return this.request('/forecasting/imbalance-detection');
+}
 
-  async getGridOperatorData() {
-    return this.request('/forecasting/grid-operator-dashboard');
-  }
+async getHouseholdAlerts() {
+  return this.request('/forecasting/household-alerts');
+}
+
+async getGridOperatorData() {
+  return this.request('/forecasting/grid-operator-dashboard');
+}
+
 
   // ============== Diagnostics API ==============
 
@@ -266,3 +274,4 @@ class ApiService {
 
 export const api = new ApiService();
 export default api;
+export type ApiServiceType = ApiService;

@@ -164,6 +164,33 @@ export interface ForecastResponse {
   model_info?: Record<string, unknown>;
 }
 
+// Solar ML Forecasting Types
+export interface SolarPredictionPoint {
+  timestamp: string;
+  predicted_mw: number;
+  actual_mw: number | null;
+  rf_pred: number | null;
+  lstm_pred: number | null;
+}
+
+export interface SolarDayData {
+  date: string;
+  next_date: string;
+  actual_mw: number[];
+  predicted_next_day_mw: number[];
+}
+
+export interface SolarForecastResponse {
+  forecast_type: string;
+  target_date: string;
+  points: SolarPredictionPoint[];
+  installed_capacity_mw: number;
+  model_info?: Record<string, unknown>;
+  mae: number | null;
+  rmse: number | null;
+  mape: number | null;
+}
+
 // WebSocket Message Types
 export interface WSMessage {
   type: 'state_update' | 'status' | 'error' | 'info' | 'pong' | 'response' | 'history';
