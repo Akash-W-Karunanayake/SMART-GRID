@@ -150,6 +150,11 @@ class ApiService {
     return this.request(`/netload/forecast?target_date=${targetDate}`);
   } 
 
+  async getNetLoadImbalance(runId: number) {
+    // backend defaults: threshold_mode=dynamic, x=0.20, top_k=10
+    return this.request(`/netload/run/${runId}/imbalance`);
+  }
+
   async detectImbalance() {
     return this.request('/forecasting/imbalance-detection');
   }

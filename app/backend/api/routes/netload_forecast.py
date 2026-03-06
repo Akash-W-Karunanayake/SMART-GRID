@@ -4,6 +4,8 @@ import pandas as pd
 import numpy as np
 from typing import List, Dict, Any, Optional
 from sqlalchemy import select, delete
+from fastapi import Path
+from sqlalchemy import func
 import logging
 
 from services.netload_forecaster import NetLoadForecaster
@@ -99,6 +101,42 @@ def persist_forecast_to_db(
         db.close()
 
 
+def _compute_threshold(points: list[float], mode: str, x: float) -> float:
+    """
+    mode:
+      - "fixed": use x as MW threshold
+      - "dynamic": X = x * daily_peak_abs (x is ratio, e.g., 0.05)
+    """
+    if not points:
+        return float(x)
+
+    if mode == "fixed":
+        return float(x)
+
+    # dynamic (robust): use abs peak so it works for negative netload too
+    peak_abs = max(abs(v) for v in points)
+    return float(x) * float(peak_abs)
+
+
+def _label_and_action(yhat_mw: float, X: float) -> tuple[str, float, str]:
+    """
+    Returns: (label, severity, action)
+    """
+    if yhat_mw < -X:
+        label = "oversupply"
+        severity = abs(yhat_mw)  # MW magnitude
+        action = "Charge battery."  # DSS-friendly, generic
+    elif yhat_mw > X:
+        label = "undersupply"
+        severity = abs(yhat_mw)
+        action = "Discharge battery."
+    else:
+        label = "balanced"
+        severity = abs(yhat_mw)
+        action = "No action."
+    return label, severity, action 
+
+
 @router.get("/forecast")
 def forecast(target_date: str):
     """
@@ -132,14 +170,175 @@ def forecast(target_date: str):
         except Exception as e:
             # Don’t break API if DB write fails
             logger.error(f"Failed to persist netload forecast to DB: {e}")
+        
+        computed_at = datetime.utcnow().isoformat() + "Z"
 
         return {
             "target_date": target_date,
             "issue_time": issue_time.isoformat(),
             # optional but useful for debugging/history later:
             "run_id": run_id,
+            "computed_at": computed_at,
             "points": [{"timestamp": t.isoformat(), "yhat_mw": float(v)} for t, v in zip(ts, yhat)],
         }
 
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+    
+@router.get("/history")
+def history(limit: int = 10):
+    """
+    Returns latest forecast runs (audit trail).
+    URL: /api/v1/netload/history?limit=10
+    """
+    db = SessionLocal()
+    try:
+        limit = max(1, min(int(limit), 200))  # safety clamp
+
+        stmt = (
+            select(ForecastRun)
+            .order_by(ForecastRun.created_at.desc())
+            .limit(limit)
+        )
+        runs = db.execute(stmt).scalars().all()
+
+        return {
+            "count": len(runs),
+            "runs": [
+                {
+                    "run_id": r.id,
+                    "feeder_id": r.feeder_id,
+                    "target_date": r.target_date,
+                    "issue_time": r.issue_time.isoformat(),
+                    "model_name": r.model_name,
+                    "model_version": r.model_version,
+                    "created_at": r.created_at.isoformat(),
+                }
+                for r in runs
+            ],
+        }
+    finally:
+        db.close()
+
+@router.get("/run/{run_id}")
+def get_run(run_id: int):
+    """
+    Returns a specific forecast run + its 96 points.
+    URL: /api/v1/netload/run/{run_id}
+    """
+    db = SessionLocal()
+    try:
+        run = db.get(ForecastRun, run_id)
+        if not run:
+            raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+
+        pts_stmt = (
+            select(ForecastPoint)
+            .where(ForecastPoint.run_id == run_id)
+            .order_by(ForecastPoint.step_idx.asc())
+        )
+        points = db.execute(pts_stmt).scalars().all()
+
+        return {
+            "run_id": run.id,
+            "feeder_id": run.feeder_id,
+            "target_date": run.target_date,
+            "issue_time": run.issue_time.isoformat(),
+            "model_name": run.model_name,
+            "model_version": run.model_version,
+            "created_at": run.created_at.isoformat(),
+            "points": [
+                {
+                    "step_idx": p.step_idx,
+                    "timestamp": p.timestamp.isoformat(),
+                    "yhat_mw": float(p.yhat_mw),
+                }
+                for p in points
+            ],
+        }
+    finally:
+        db.close()
+
+@router.get("/run/{run_id}/imbalance")
+def run_imbalance(
+    run_id: int,
+    threshold_mode: str = "dynamic",  # "dynamic" or "fixed"
+    x: float = 0.20,                  # dynamic ratio OR fixed MW depending on mode
+    top_k: int = 10
+):
+    """
+    Classify each 15-min step as oversupply/balanced/undersupply + recommend action.
+    URL:
+      /api/v1/netload/run/{run_id}/imbalance?threshold_mode=dynamic&x=0.05&top_k=10
+      /api/v1/netload/run/{run_id}/imbalance?threshold_mode=fixed&x=1.0&top_k=10
+    """
+    mode = (threshold_mode or "").lower().strip()
+    if mode not in {"dynamic", "fixed"}:
+        raise HTTPException(status_code=400, detail="threshold_mode must be 'dynamic' or 'fixed'")
+
+    top_k = max(1, min(int(top_k), 50))
+
+    db = SessionLocal()
+    try:
+        run = db.get(ForecastRun, run_id)
+        if not run:
+            raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+
+        pts_stmt = (
+            select(ForecastPoint)
+            .where(ForecastPoint.run_id == run_id)
+            .order_by(ForecastPoint.step_idx.asc())
+        )
+        pts = db.execute(pts_stmt).scalars().all()
+        if not pts:
+            raise HTTPException(status_code=404, detail=f"No points found for run {run_id}")
+
+        yvals = [float(p.yhat_mw) for p in pts]
+        X = _compute_threshold(yvals, mode=mode, x=float(x))
+
+        records = []
+        counts = {"oversupply": 0, "balanced": 0, "undersupply": 0}
+
+        for p in pts:
+            label, severity, action = _label_and_action(float(p.yhat_mw), X)
+            counts[label] += 1
+            records.append({
+                "step_idx": p.step_idx,
+                "timestamp": p.timestamp.isoformat(),
+                "yhat_mw": float(p.yhat_mw),
+                "label": label,
+                "severity": float(severity),
+                "recommended_action": action,
+            })
+
+        # “Worst” intervals:
+        worst_undersupply = sorted(
+            [r for r in records if r["label"] == "undersupply"],
+            key=lambda r: r["yhat_mw"],
+            reverse=True
+        )[:top_k]
+
+        worst_oversupply = sorted(
+            [r for r in records if r["label"] == "oversupply"],
+            key=lambda r: r["yhat_mw"]
+        )[:top_k]
+
+        return {
+            "run_id": run.id,
+            "feeder_id": run.feeder_id,
+            "target_date": run.target_date,
+            "issue_time": run.issue_time.isoformat(),
+            "model_name": run.model_name,
+            "model_version": run.model_version,
+            "threshold_mode": mode,
+            "threshold_X_mw": float(X),
+            "counts": counts,
+            "top_k": top_k,
+            "worst_undersupply": worst_undersupply,
+            "worst_oversupply": worst_oversupply,
+            # optional: full labeled timeline
+            "timeline": records,
+            "note": "Actions assume battery storage is available."
+        }
+    finally:
+        db.close()
