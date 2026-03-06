@@ -21,6 +21,7 @@ from config import settings
 from api.routes import grid_router, simulation_router, forecasting_router, diagnostics_router, pipeline_router, netload_router
 from api.websockets import websocket_endpoint, manager
 from services import opendss_service
+from services.netload_db import init_db
 from services.fault_detection_service import fault_detection_service
 
 # Configure logging
@@ -41,6 +42,13 @@ async def lifespan(app: FastAPI):
     logger.info("=" * 60)
     logger.info(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}")
     logger.info("=" * 60)
+
+    # Initialize NetLoad SQLite DB (creates tables if missing)
+    try:
+        init_db()
+        logger.info("NetLoad DB initialized successfully")
+    except Exception as e:
+        logger.error(f"Error initializing NetLoad DB: {e}")
 
     # Try to load the OpenDSS model on startup
     try:
