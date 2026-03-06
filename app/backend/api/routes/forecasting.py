@@ -10,7 +10,11 @@ from typing import Dict, Any, List
 import numpy as np
 from datetime import datetime
 
-from models.schemas import ForecastRequest, ForecastResponse, ForecastPoint
+from models.schemas import (
+    ForecastRequest, ForecastResponse, ForecastPoint,
+    SolarPredictionPoint, SolarForecastResponse, SolarDayDataResponse,
+)
+from services.solar_forecast_service import solar_forecast_service
 
 router = APIRouter(prefix="/forecasting", tags=["Forecasting"])
 
@@ -107,32 +111,73 @@ async def forecast_load(request: ForecastRequest):
     )
 
 
-@router.post("/solar", response_model=ForecastResponse)
-async def forecast_solar(request: ForecastRequest):
+@router.post("/solar", response_model=SolarForecastResponse)
+async def forecast_solar(
+    request: ForecastRequest,
+    target_date: str = None,
+):
     """
-    Forecast solar generation.
+    Forecast solar generation using the trained RF ensemble model.
 
-    This endpoint will integrate with:
-    - Component 2: Stacked Ensemble ML model (RF + LSTM + GBR meta-learner)
-
-    Currently returns mock data for development.
+    - **target_date**: Date to forecast (YYYY-MM-DD). Defaults to 2025-07-15.
+    - Uses NASA POWER hourly weather data + RF autoregressive 24-hour loop.
     """
-    points = _generate_mock_forecast(
-        forecast_type="solar",
-        horizon_hours=request.horizon_hours,
-        include_uncertainty=request.include_uncertainty
-    )
+    if not solar_forecast_service.is_loaded:
+        raise HTTPException(
+            status_code=503,
+            detail="Solar forecast models not loaded. Check server startup logs.",
+        )
 
-    return ForecastResponse(
-        forecast_type="solar",
-        horizon_hours=request.horizon_hours,
+    date_str = target_date or "2025-07-15"
+
+    try:
+        predictions = solar_forecast_service.forecast_24h(date_str)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    from config import settings
+
+    points = [
+        SolarPredictionPoint(
+            timestamp=p["timestamp"],
+            predicted_mw=p["predicted_mw"],
+        )
+        for p in predictions
+    ]
+
+    date_range = solar_forecast_service.get_available_date_range()
+
+    return SolarForecastResponse(
+        forecast_type="solar_ml",
+        target_date=date_str,
         points=points,
+        installed_capacity_mw=settings.INSTALLED_CAPACITY_MW,
         model_info={
-            "model_type": "mock",
-            "note": "Replace with Stacked Ensemble model",
-            "status": "placeholder"
-        }
+            "model_type": "random_forest_autoregressive",
+            "n_features": 17,
+            "available_dates": date_range,
+            "status": "active",
+        },
     )
+
+
+@router.get("/solar-day-data", response_model=SolarDayDataResponse)
+async def get_solar_day_data(date: str):
+    """
+    Get actual solar generation for a date and predicted solar for the next day.
+    Used by the simulation-driven Forecasting page.
+    """
+    if not solar_forecast_service.is_loaded:
+        raise HTTPException(
+            status_code=503,
+            detail="Solar forecast models not loaded.",
+        )
+    try:
+        data = solar_forecast_service.get_day_data(date)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return SolarDayDataResponse(**data)
 
 
 @router.post("/net-load", response_model=ForecastResponse)
