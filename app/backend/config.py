@@ -27,6 +27,12 @@ class Settings(BaseSettings):
     DSS_MODEL_DIR: Path = BASE_DIR  # OpenDSS files are in the root
     MASTER_DSS_FILE: str = "Master.dss"
 
+    # Solar Forecasting
+    SOLAR_MODELS_DIR: Path = BASE_DIR / "Solar" / "Models"
+    NASA_POWER_CSV: Path = BASE_DIR / "data" / "raw" / "Environmental data" / "NASA_POWER_Hourly_May_Aug_2025.csv"
+    INSTALLED_CAPACITY_MW: float = 53.4
+    PERFORMANCE_RATIO: float = 0.75
+
     # Simulation settings
     SIMULATION_STEP_SECONDS: float = 1.0  # Time between simulation steps
     DEFAULT_SIMULATION_HOURS: int = 24  # Default simulation duration

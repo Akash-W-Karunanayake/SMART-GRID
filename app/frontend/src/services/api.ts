@@ -132,8 +132,11 @@ class ApiService {
     });
   }
 
-  async forecastSolar(horizonHours: number = 24, includeUncertainty: boolean = true) {
-    return this.request('/forecasting/solar', {
+  async forecastSolar(horizonHours: number = 24, includeUncertainty: boolean = true, targetDate?: string) {
+    const params = new URLSearchParams();
+    if (targetDate) params.set('target_date', targetDate);
+    const qs = params.toString();
+    return this.request(`/forecasting/solar${qs ? '?' + qs : ''}`, {
       method: 'POST',
       body: JSON.stringify({ horizon_hours: horizonHours, include_uncertainty: includeUncertainty }),
     });
@@ -144,6 +147,10 @@ class ApiService {
       method: 'POST',
       body: JSON.stringify({ horizon_hours: horizonHours, include_uncertainty: includeUncertainty }),
     });
+  }
+
+  async getSolarDayData(date: string) {
+    return this.request(`/forecasting/solar-day-data?date=${date}`);
   }
 
   async detectImbalance() {
