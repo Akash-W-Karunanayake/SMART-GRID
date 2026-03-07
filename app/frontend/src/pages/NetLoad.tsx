@@ -248,16 +248,14 @@ export default function NetLoad() {
   }, [imbalance, fullDayResolution, fullDayStateFilter]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-10">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white flex items-center">
             <BarChart3 className="w-6 h-6 mr-2 text-purple-400" />
             Net Load Forecasting
           </h1>
-          <p className="text-slate-400 text-sm mt-1">
-            Day-ahead operational forecast with imbalance classification and action guidance.
-          </p>
+          
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
@@ -278,7 +276,7 @@ export default function NetLoad() {
         </div>
       </div>
 
-      <div className="card">
+      <div className="card mt-4">
         <div className="flex items-center justify-between mb-4">
           <h2 className="card-header">Forecast Summary</h2>
           <span className="text-xs text-slate-500">Operational overview</span>
