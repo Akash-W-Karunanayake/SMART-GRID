@@ -130,31 +130,29 @@ models/trained/
 
 
 
-# Netload datasets
+# Models and datasets
+
+research/datasets/
+research/models/
+research/results/
+
+
+# Netload datasets (raw + processed)
 data/raw/netload/*
 data/processed/netload/*
 !data/raw/netload/.gitkeep
 !data/processed/netload/.gitkeep
-data/processed/disaggregated/
 
-# Generated DSS files
-LoadShapes_RealData/
-LoadShapes.dss
-RooftopSolar.dss
-
-# Artifacts / models
+# model artifacts / caches
 notebooks/artifacts_f10/
 notebooks/denoise_cache/
-app/backend/artifacts_f10/
+
+# common python junk
+__pycache__/
+.ipynb_checkpoints/
 *.pkl
 *.pt
 *.npy
-*.keras
 
-# Local DB
+app/backend/artifacts_f10/
 app/backend/*.db
-
-# Python / Jupyter
-__pycache__/
-*.py[cod]
-.ipynb_checkpoints/
