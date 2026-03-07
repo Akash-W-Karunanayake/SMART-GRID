@@ -40,33 +40,6 @@ def load_window(issue_time: datetime) -> np.ndarray:
     return win[cols].to_numpy(dtype=float)
 
 
-def load_actual_points(target_date: str) -> List[Dict[str, Any]]:
-    # TEMP: CSV read (replace with DB query later if needed)
-    df = pd.read_csv("data/processed/netload/f10_netload_nasa_clean.csv", parse_dates=["Timestamp"])
-    df = df.sort_values("Timestamp")
-
-    start_ts = datetime.strptime(target_date, "%Y-%m-%d")
-    end_ts = start_ts + timedelta(days=1)
-
-    day_df = df[(df["Timestamp"] >= start_ts) & (df["Timestamp"] < end_ts)].copy()
-
-    if day_df.empty:
-        return []
-
-    # Only enable comparison when a full day exists
-    if len(day_df) != MODEL.H:
-        logger.warning(f"Actual data for {target_date} has {len(day_df)} rows, expected {MODEL.H}")
-        return []
-
-    return [
-        {
-            "timestamp": row["Timestamp"].isoformat(),
-            "yhat_mw": float(row["NetLoad_MW"]),
-        }
-        for _, row in day_df.iterrows()
-    ]
-
-
 def persist_forecast_to_db(
     feeder_id: str,
     target_date: str,
@@ -178,9 +151,6 @@ def forecast(target_date: str):
         start_ts = datetime.strptime(target_date, "%Y-%m-%d")
         ts = [start_ts + timedelta(minutes=15 * i) for i in range(MODEL.H)]
 
-        # Load actual net-load values for the same day (historical/test dates)
-        actual_points = load_actual_points(target_date)
-
         # --- Persist to DB (1 run + 96 points) ---
         run_id = None
         try:
@@ -200,19 +170,16 @@ def forecast(target_date: str):
         except Exception as e:
             # Don’t break API if DB write fails
             logger.error(f"Failed to persist netload forecast to DB: {e}")
-
+        
         computed_at = datetime.utcnow().isoformat() + "Z"
 
         return {
             "target_date": target_date,
             "issue_time": issue_time.isoformat(),
+            # optional but useful for debugging/history later:
             "run_id": run_id,
             "computed_at": computed_at,
-            "points": [
-                {"timestamp": t.isoformat(), "yhat_mw": float(v)}
-                for t, v in zip(ts, yhat)
-            ],
-            "actual_points": actual_points,
+            "points": [{"timestamp": t.isoformat(), "yhat_mw": float(v)} for t, v in zip(ts, yhat)],
         }
 
     except Exception as e:
