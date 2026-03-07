@@ -20,6 +20,7 @@ type NetLoadForecastResponse = {
   run_id?: number;
   computed_at?: string;
   points: NetLoadPoint[];
+  actual_points?: NetLoadPoint[];
 };
 
 type ImbalanceItem = {
@@ -47,6 +48,7 @@ type NetLoadImbalanceResponse = {
 type ViewMode = 'priority' | 'full';
 type Resolution = '15m' | '30m' | '1h' | '2h';
 type StateFilter = 'all' | 'undersupply' | 'oversupply' | 'balanced';
+type ChartMode = 'forecast' | 'compare';
 
 function fmtTime(tsISO: string) {
   const d = new Date(tsISO);
@@ -117,6 +119,9 @@ export default function NetLoad() {
   const [fullDayResolution, setFullDayResolution] = useState<Resolution>('1h');
   const [fullDayStateFilter, setFullDayStateFilter] = useState<StateFilter>('all');
 
+  const [chartMode, setChartMode] = useState<ChartMode>('forecast');
+  const [actualSeries, setActualSeries] = useState<NetLoadPoint[]>([]);
+
   useEffect(() => {
     const appHeader = document.querySelector('header') as HTMLElement | null;
     if (appHeader) appHeader.style.display = 'none';
@@ -131,6 +136,7 @@ export default function NetLoad() {
     try {
       const netLoad = (await api.forecastNetLoadByDate(targetDate)) as NetLoadForecastResponse;
       setNetLoadForecast(netLoad);
+      setActualSeries(netLoad.actual_points ?? []);
 
       const runId = netLoad.run_id;
       if (runId) {
@@ -139,9 +145,15 @@ export default function NetLoad() {
       } else {
         setImbalance(null);
       }
+
+      if (!(netLoad.actual_points && netLoad.actual_points.length > 0)) {
+        setChartMode('forecast');
+      }
     } catch (error) {
       console.error('Failed to run forecast:', error);
       setImbalance(null);
+      setActualSeries([]);
+      setChartMode('forecast');
     } finally {
       setLoading(false);
     }
@@ -201,13 +213,9 @@ export default function NetLoad() {
     });
   }, [netLoadForecast, thresholdX]);
 
-  const topUndersupply = useMemo(() => {
-    return imbalance?.worst_undersupply.slice(0, 5) ?? [];
-  }, [imbalance]);
+  const topUndersupply = useMemo(() => imbalance?.worst_undersupply.slice(0, 5) ?? [], [imbalance]);
 
-  const topOversupply = useMemo(() => {
-    return imbalance?.worst_oversupply.slice(0, 5) ?? [];
-  }, [imbalance]);
+  const topOversupply = useMemo(() => imbalance?.worst_oversupply.slice(0, 5) ?? [], [imbalance]);
 
   const actionSummary = useMemo(() => {
     if (!imbalance) return null;
@@ -247,6 +255,20 @@ export default function NetLoad() {
     return sampled.filter((row) => row.label === fullDayStateFilter);
   }, [imbalance, fullDayResolution, fullDayStateFilter]);
 
+  const hasActualData = actualSeries.length > 0;
+
+  const comparisonChartData = useMemo(() => {
+    const forecastPts = netLoadForecast?.points ?? [];
+    const actualMap = new Map(actualSeries.map((p) => [p.timestamp, p.yhat_mw]));
+
+    return forecastPts.map((p) => ({
+      time: fmtTime(p.timestamp),
+      timestamp: p.timestamp,
+      predicted: p.yhat_mw,
+      actual: actualMap.get(p.timestamp) ?? null,
+    }));
+  }, [netLoadForecast, actualSeries]);
+
   return (
     <div className="space-y-10">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
@@ -255,7 +277,6 @@ export default function NetLoad() {
             <BarChart3 className="w-6 h-6 mr-2 text-purple-400" />
             Net Load Forecasting
           </h1>
-          
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
@@ -354,31 +375,84 @@ export default function NetLoad() {
             </div>
 
             <p className="text-slate-400 text-sm">
-              15-minute forecast • Net Load = Electricity Demand − Renewable Generation
+              {chartMode === 'forecast'
+                ? '15-minute forecast • Net Load = Electricity Demand − Renewable Generation'
+                : 'Predicted vs actual net load comparison for the selected day'}
             </p>
           </div>
 
-          {thresholdX != null && (
-            <div className="flex flex-wrap gap-2 text-xs">
-              <div className="flex items-center gap-2 rounded-md border border-slate-700 bg-slate-800/50 px-3 py-1.5 text-slate-300">
-                <span className="inline-block h-2.5 w-2.5 rounded-full bg-violet-400" />
-                Net Load
-              </div>
-              <div className="flex items-center gap-2 rounded-md border border-slate-700 bg-slate-800/50 px-3 py-1.5 text-slate-300">
-                <span className="inline-block h-[2px] w-4 bg-red-500" />
-                Undersupply (+{thresholdX.toFixed(2)} MW)
-              </div>
-              <div className="flex items-center gap-2 rounded-md border border-slate-700 bg-slate-800/50 px-3 py-1.5 text-slate-300">
-                <span className="inline-block h-[2px] w-4 bg-blue-500" />
-                Oversupply (-{thresholdX.toFixed(2)} MW)
-              </div>
+          <div className="flex flex-col items-start gap-3 lg:min-w-[420px]">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setChartMode('forecast')}
+                className={`rounded-md border px-3 py-1.5 text-sm transition ${
+                  chartMode === 'forecast'
+                    ? 'border-violet-500/30 bg-violet-500/10 text-violet-200'
+                    : 'border-slate-700 bg-slate-800/50 text-slate-300 hover:bg-slate-800'
+                }`}
+              >
+                Forecast
+              </button>
+
+              <button
+                type="button"
+                onClick={() => hasActualData && setChartMode('compare')}
+                disabled={!hasActualData}
+                className={`rounded-md border px-3 py-1.5 text-sm transition ${
+                  chartMode === 'compare'
+                    ? 'border-violet-500/30 bg-violet-500/10 text-violet-200'
+                    : 'border-slate-700 bg-slate-800/50 text-slate-300 hover:bg-slate-800'
+                } ${!hasActualData ? 'cursor-not-allowed opacity-50' : ''}`}
+              >
+                Predicted vs Actual
+              </button>
             </div>
-          )}
+
+            <div className="min-h-[60px]">
+              {!hasActualData && (
+                <p className="text-xs text-slate-500 mb-2">Actual values not available for this date.</p>
+              )}
+
+              {chartMode === 'forecast' && thresholdX != null && (
+                <div className="flex flex-wrap gap-2 text-xs">
+                  <div className="flex items-center gap-2 rounded-md border border-slate-700 bg-slate-800/50 px-3 py-1.5 text-slate-300">
+                    <span className="inline-block h-2.5 w-2.5 rounded-full bg-violet-400" />
+                    Net Load
+                  </div>
+                  <div className="flex items-center gap-2 rounded-md border border-slate-700 bg-slate-800/50 px-3 py-1.5 text-slate-300">
+                    <span className="inline-block h-[2px] w-4 bg-red-500" />
+                    Undersupply (+{thresholdX.toFixed(2)} MW)
+                  </div>
+                  <div className="flex items-center gap-2 rounded-md border border-slate-700 bg-slate-800/50 px-3 py-1.5 text-slate-300">
+                    <span className="inline-block h-[2px] w-4 bg-blue-500" />
+                    Oversupply (-{thresholdX.toFixed(2)} MW)
+                  </div>
+                </div>
+              )}
+
+              {chartMode === 'compare' && (
+                <div className="flex flex-wrap gap-2 text-xs">
+                  <div className="flex items-center gap-2 rounded-md border border-slate-700 bg-slate-800/50 px-3 py-1.5 text-slate-300">
+                    <span className="inline-block h-2.5 w-2.5 rounded-full bg-violet-400" />
+                    Predicted
+                  </div>
+                  <div className="flex items-center gap-2 rounded-md border border-slate-700 bg-slate-800/50 px-3 py-1.5 text-slate-300">
+                    <span className="inline-block h-2.5 w-2.5 rounded-full bg-emerald-400" />
+                    Actual
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
         <div className="mt-5 h-[380px] rounded-xl border border-slate-700/50 bg-slate-800/20 p-4">
           <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 8 }}>
+            <ComposedChart
+              data={chartMode === 'forecast' ? chartData : comparisonChartData}
+              margin={{ top: 10, right: 10, left: 0, bottom: 8 }}
+            >
               <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={true} horizontal={true} />
 
               <XAxis
@@ -407,8 +481,8 @@ export default function NetLoad() {
                   color: '#e2e8f0',
                 }}
                 labelStyle={{ color: '#cbd5e1', fontSize: 12 }}
-                formatter={(value: number, name: string) => {
-                  if (name === 'Net Load') return [`${Number(value).toFixed(2)} MW`, 'Net Load'];
+                formatter={(value: number | null, name: string) => {
+                  if (value == null) return ['N/A', name];
                   return [`${Number(value).toFixed(2)} MW`, name];
                 }}
                 labelFormatter={(label) => `Time: ${label}`}
@@ -416,33 +490,64 @@ export default function NetLoad() {
 
               <ReferenceLine y={0} stroke="#64748b" strokeDasharray="4 4" />
 
-              {thresholdX != null && (
+              {chartMode === 'forecast' && thresholdX != null && (
                 <>
                   <ReferenceLine y={thresholdX} stroke="#ef4444" strokeDasharray="4 4" />
                   <ReferenceLine y={-thresholdX} stroke="#3b82f6" strokeDasharray="4 4" />
                 </>
               )}
 
-              <Line
-                type="monotone"
-                dataKey="netLoad"
-                stroke="#8b5cf6"
-                strokeWidth={3}
-                dot={false}
-                activeDot={{ r: 4 }}
-                name="Net Load"
-              />
+              {chartMode === 'forecast' ? (
+                <Line
+                  type="monotone"
+                  dataKey="netLoad"
+                  stroke="#8b5cf6"
+                  strokeWidth={3}
+                  dot={false}
+                  activeDot={{ r: 4 }}
+                  name="Net Load"
+                />
+              ) : (
+                <>
+                  <Line
+                    type="monotone"
+                    dataKey="predicted"
+                    stroke="#8b5cf6"
+                    strokeWidth={3}
+                    dot={false}
+                    activeDot={{ r: 4 }}
+                    name="Predicted"
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="actual"
+                    stroke="#34d399"
+                    strokeWidth={3}
+                    dot={false}
+                    activeDot={{ r: 4 }}
+                    name="Actual"
+                  />
+                </>
+              )}
             </ComposedChart>
           </ResponsiveContainer>
         </div>
 
         <div className="mt-4 flex flex-wrap items-center gap-3 text-xs">
-          <span className="rounded-md border border-slate-700 bg-slate-800/50 px-2.5 py-1 text-slate-300">
-            Positive net load = undersupply
-          </span>
-          <span className="rounded-md border border-slate-700 bg-slate-800/50 px-2.5 py-1 text-slate-300">
-            Negative net load = oversupply
-          </span>
+          {chartMode === 'forecast' ? (
+            <>
+              <span className="rounded-md border border-slate-700 bg-slate-800/50 px-2.5 py-1 text-slate-300">
+                Positive net load = undersupply
+              </span>
+              <span className="rounded-md border border-slate-700 bg-slate-800/50 px-2.5 py-1 text-slate-300">
+                Negative net load = oversupply
+              </span>
+            </>
+          ) : (
+            <span className="rounded-md border border-slate-700 bg-slate-800/50 px-2.5 py-1 text-slate-300">
+              Comparison view is shown only when actual values are available
+            </span>
+          )}
         </div>
       </div>
 
