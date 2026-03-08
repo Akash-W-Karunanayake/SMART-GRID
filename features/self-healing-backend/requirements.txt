@@ -1,0 +1,30 @@
+# ============================================
+# Self-Healing Backend - Dependencies
+# ============================================
+
+# --- Core API ---
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.3
+pydantic-settings==2.7.0
+python-dotenv==1.0.1
+
+# --- OpenDSS ---
+opendssdirect.py==0.9.5
+
+# --- Data & Graph ---
+numpy==1.26.4
+pandas==2.2.3
+networkx==3.4.2
+
+# --- ML / RL ---
+torch==2.5.1
+torch-geometric==2.6.1
+gymnasium==1.0.0
+
+# --- Logging & Utils ---
+loguru==0.7.3
+
+# --- Testing ---
+pytest==8.3.4
+httpx==0.28.1
