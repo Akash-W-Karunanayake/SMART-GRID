@@ -18,6 +18,7 @@ export interface PipelineStep {
   total_wind_kw: number;
   total_thermal_kw: number;
   total_generation_kw: number;
+  total_load_kw: number;
   /** Per-bus voltage (pu) keyed by bus name — populated from pipeline */
   bus_voltages?: Record<string, number>;
   /** Per-feeder net power (kW) — positive = import, negative = export/reverse flow */
@@ -43,6 +44,7 @@ export interface LiveMetrics {
   total_wind_kw: number;
   total_thermal_kw: number;
   total_generation_kw: number;
+  total_load_kw: number;
   /** Per-bus voltage (pu) keyed by bus name — enables topology node coloring per step */
   bus_voltages?: Record<string, number>;
   /** Per-feeder net power (kW) */
@@ -205,6 +207,7 @@ export const useGridStore = create<GridStore>((set) => ({
         total_wind_kw: step.total_wind_kw,
         total_thermal_kw: step.total_thermal_kw,
         total_generation_kw: step.total_generation_kw,
+        total_load_kw: step.total_load_kw,
         bus_voltages: step.bus_voltages,
         power_F06_kw: step.power_F06_kw,
         power_F07_kw: step.power_F07_kw,

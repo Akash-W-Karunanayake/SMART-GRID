@@ -43,6 +43,7 @@ function toStep(s: any): PipelineStep & { prediction?: any } {
     total_wind_kw: s.total_wind_kw ?? 0,
     total_thermal_kw: s.total_thermal_kw ?? 0,
     total_generation_kw: s.total_generation_kw ?? 0,
+    total_load_kw: s.total_load_kw ?? 0,
     bus_voltages: s.bus_voltages,
     power_F06_kw: s.power_F06_kw,
     power_F07_kw: s.power_F07_kw,
