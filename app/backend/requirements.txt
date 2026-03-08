@@ -27,3 +27,7 @@ aiofiles==23.2.1
 torch>=2.0.0
 # tensorflow>=2.15.0
 # scikit-learn>=1.4.0
+
+# Graph / Self-Healing
+networkx>=3.0
+# torch-geometric>=2.4.0  # Optional: needed for GNN-based MARL inference

@@ -259,6 +259,59 @@ export interface PipelineResults {
   completed_days: DayResult[];
 }
 
+// ============== Self-Healing Types ==============
+
+export interface SwitchAction {
+  switch_name: string;
+  action: 'open' | 'close';
+  reason: string;
+}
+
+export interface IsolationResult {
+  success: boolean;
+  fault_location: string;
+  fault_type: string;
+  feeder: string;
+  isolated_zone_buses: string[];
+  switch_actions: SwitchAction[];
+  de_energized_loads: string[];
+  num_de_energized_loads: number;
+  critical_loads_affected: string[];
+  message: string;
+}
+
+export interface RestorationResult {
+  strategy: string;
+  closed_switches: string[];
+  energized_loads: string[];
+  de_energized_loads: string[];
+  restoration_pct: number;
+  converged: boolean;
+  radial: boolean;
+  voltage_violations: string[];
+  overloaded_lines: string[];
+}
+
+export interface SelfHealingGridState {
+  converged: boolean;
+  all_switch_states: Record<string, boolean>;
+  tie_switch_states: Record<string, boolean>;
+  bus_voltages_pu: Record<string, number>;
+  load_powers_kw: Record<string, number>;
+  energized_loads: string[];
+  de_energized_loads: string[];
+  voltage_violations: string[];
+  overloaded_lines: string[];
+  total_load_kw: number;
+}
+
+export interface FLISRResponse {
+  fault: { bus: string; fault_type: string; feeder: string };
+  isolation: IsolationResult;
+  restoration: RestorationResult;
+  grid_state: SelfHealingGridState;
+}
+
 // API Response Types
 export interface ApiResponse<T = unknown> {
   success: boolean;

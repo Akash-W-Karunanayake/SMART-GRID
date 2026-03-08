@@ -7,6 +7,7 @@ Design decisions (from Phase 1):
   - Q9: Frontend receives full per-class probability vectors
   - Q17: Option B — sub-cycle snapshots for accurate inference
 """
+import re
 import sys
 import torch
 import torch.nn.functional as F
@@ -105,7 +106,13 @@ class FaultDetectionService:
                     in_features_cnn=self._in_features_cnn,
                     n_buses=self._n_buses,
                 )
-                self._model.load_state_dict(ckpt["model_state"])
+                # Remap old PyG GCNConv key format (.bias) to new format (.lin.bias)
+                state = ckpt["model_state"]
+                remapped = {}
+                for k, v in state.items():
+                    new_k = re.sub(r'(gcn_layers\.\d+)\.bias$', r'\1.lin.bias', k)
+                    remapped[new_k] = v
+                self._model.load_state_dict(remapped)
                 self._model.to(self._device)
                 self._model.eval()
                 logger.info(f"Hybrid model loaded (epoch={ckpt['epoch']}, "

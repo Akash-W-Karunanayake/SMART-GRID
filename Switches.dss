@@ -42,16 +42,19 @@ New Line.CB_F12 Bus1=Bus_33kV_B.1.2.3 Bus2=F12_Node1.1.2.3 Switch=yes Length=0.0
 ! -----------------------------------------------------------
 
 ! Section A Sectionalizers
-New Line.SEC_F05 Bus1=F05_Node2.1.2.3 Bus2=F05_UJPS.1.2.3 Switch=yes Length=0.001 Units=km enabled=yes
-New Line.SEC_F06 Bus1=F06_Node2.1.2.3 Bus2=F06_Node3.1.2.3 Switch=yes Length=0.001 Units=km enabled=yes
-New Line.SEC_F07 Bus1=F07_Node2.1.2.3 Bus2=F07_Node3.1.2.3 Switch=yes Length=0.001 Units=km enabled=yes
-New Line.SEC_F08 Bus1=F08_Node2.1.2.3 Bus2=F08_Node3.1.2.3 Switch=yes Length=0.001 Units=km enabled=yes
+! NOTE: SECs now carry the linecode+length of the line sections they replace
+! (F05_Sec3, F06_Sec3, F07_Sec3, F08_Sec3 removed from Lines.dss)
+New Line.SEC_F05 Bus1=F05_Node2.1.2.3 Bus2=F05_UJPS.1.2.3 LineCode=LYNX_33kV Length=3.0 Units=km Switch=yes enabled=yes
+New Line.SEC_F06 Bus1=F06_Node2.1.2.3 Bus2=F06_Node3.1.2.3 LineCode=RACOON_33kV Length=2.5 Units=km Switch=yes enabled=yes
+New Line.SEC_F07 Bus1=F07_Node2.1.2.3 Bus2=F07_Node3.1.2.3 LineCode=RACOON_33kV Length=3.0 Units=km Switch=yes enabled=yes
+New Line.SEC_F08 Bus1=F08_Node2.1.2.3 Bus2=F08_Node3.1.2.3 LineCode=RACOON_33kV Length=2.5 Units=km Switch=yes enabled=yes
 
 ! Section B Sectionalizers
-New Line.SEC_F09 Bus1=F09_Node3.1.2.3 Bus2=F09_Node4.1.2.3 Switch=yes Length=0.001 Units=km enabled=yes
-New Line.SEC_F10 Bus1=F10_Node2.1.2.3 Bus2=F10_Node3.1.2.3 Switch=yes Length=0.001 Units=km enabled=yes
-New Line.SEC_F11 Bus1=F11_Node2.1.2.3 Bus2=F11_Node3.1.2.3 Switch=yes Length=0.001 Units=km enabled=yes
-New Line.SEC_F12 Bus1=F12_Node2.1.2.3 Bus2=F12_Node3.1.2.3 Switch=yes Length=0.001 Units=km enabled=yes
+! (F09_Sec4, F10_Sec3, F11_Sec3, F12_Sec3 removed from Lines.dss)
+New Line.SEC_F09 Bus1=F09_Node3.1.2.3 Bus2=F09_Node4.1.2.3 LineCode=DOG_33kV Length=4.0 Units=km Switch=yes enabled=yes
+New Line.SEC_F10 Bus1=F10_Node2.1.2.3 Bus2=F10_Node3.1.2.3 LineCode=RACOON_33kV Length=3.5 Units=km Switch=yes enabled=yes
+New Line.SEC_F11 Bus1=F11_Node2.1.2.3 Bus2=F11_Node3.1.2.3 LineCode=XLPE_185_33kV Length=1.5 Units=km Switch=yes enabled=yes
+New Line.SEC_F12 Bus1=F12_Node2.1.2.3 Bus2=F12_Node3.1.2.3 LineCode=RACOON_33kV Length=2.5 Units=km Switch=yes enabled=yes
 
 
 ! -----------------------------------------------------------

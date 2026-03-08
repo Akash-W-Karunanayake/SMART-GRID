@@ -57,13 +57,14 @@ New Line.F05_Sec2
 ~   linecode=LYNX_33kV
 ~   units=km
 
-New Line.F05_Sec3
-~   phases=3
-~   bus1=F05_Node2.1.2.3
-~   bus2=F05_UJPS.1.2.3              // UJPS connection point
-~   length=3.0
-~   linecode=LYNX_33kV
-~   units=km
+// F05_Sec3 REMOVED - Replaced by SEC_F05 in Switches.dss
+// New Line.F05_Sec3
+// ~   phases=3
+// ~   bus1=F05_Node2.1.2.3
+// ~   bus2=F05_UJPS.1.2.3              // UJPS connection point
+// ~   length=3.0
+// ~   linecode=LYNX_33kV
+// ~   units=km
 
 // ----------------------------------------------------------------------------
 // FEEDER F06 - KKS 3 (Industrial)
@@ -88,13 +89,14 @@ New Line.F06_Sec2
 ~   linecode=LYNX_33kV
 ~   units=km
 
-New Line.F06_Sec3
-~   phases=3
-~   bus1=F06_Node2.1.2.3
-~   bus2=F06_Node3.1.2.3             // DT_F06_2 location
-~   length=2.5
-~   linecode=RACOON_33kV
-~   units=km
+// F06_Sec3 REMOVED - Replaced by SEC_F06 in Switches.dss
+// New Line.F06_Sec3
+// ~   phases=3
+// ~   bus1=F06_Node2.1.2.3
+// ~   bus2=F06_Node3.1.2.3             // DT_F06_2 location
+// ~   length=2.5
+// ~   linecode=RACOON_33kV
+// ~   units=km
 
 New Line.F06_Sec4
 ~   phases=3
@@ -126,13 +128,14 @@ New Line.F07_Sec2
 ~   linecode=RACOON_33kV
 ~   units=km
 
-New Line.F07_Sec3
-~   phases=3
-~   bus1=F07_Node2.1.2.3
-~   bus2=F07_Node3.1.2.3             // DT_F07_2 location
-~   length=3.0
-~   linecode=RACOON_33kV
-~   units=km
+// F07_Sec3 REMOVED - Replaced by SEC_F07 in Switches.dss
+// New Line.F07_Sec3
+// ~   phases=3
+// ~   bus1=F07_Node2.1.2.3
+// ~   bus2=F07_Node3.1.2.3             // DT_F07_2 location
+// ~   length=3.0
+// ~   linecode=RACOON_33kV
+// ~   units=km
 
 New Line.F07_Sec4
 ~   phases=3
@@ -164,13 +167,14 @@ New Line.F08_Sec2
 ~   linecode=RACOON_33kV
 ~   units=km
 
-New Line.F08_Sec3
-~   phases=3
-~   bus1=F08_Node2.1.2.3
-~   bus2=F08_Node3.1.2.3             // DT_F08_2 location
-~   length=2.5
-~   linecode=RACOON_33kV
-~   units=km
+// F08_Sec3 REMOVED - Replaced by SEC_F08 in Switches.dss
+// New Line.F08_Sec3
+// ~   phases=3
+// ~   bus1=F08_Node2.1.2.3
+// ~   bus2=F08_Node3.1.2.3             // DT_F08_2 location
+// ~   length=2.5
+// ~   linecode=RACOON_33kV
+// ~   units=km
 
 New Line.F08_Sec4
 ~   phases=3
@@ -212,13 +216,14 @@ New Line.F09_Sec3
 ~   linecode=DOG_33kV
 ~   units=km
 
-New Line.F09_Sec4
-~   phases=3
-~   bus1=F09_Node3.1.2.3
-~   bus2=F09_Node4.1.2.3             // DT_F09_3 location
-~   length=4.0
-~   linecode=DOG_33kV
-~   units=km
+// F09_Sec4 REMOVED - Replaced by SEC_F09 in Switches.dss
+// New Line.F09_Sec4
+// ~   phases=3
+// ~   bus1=F09_Node3.1.2.3
+// ~   bus2=F09_Node4.1.2.3             // DT_F09_3 location
+// ~   length=4.0
+// ~   linecode=DOG_33kV
+// ~   units=km
 
 New Line.F09_Sec5
 ~   phases=3
@@ -250,13 +255,14 @@ New Line.F10_Sec2
 ~   linecode=RACOON_33kV
 ~   units=km
 
-New Line.F10_Sec3
-~   phases=3
-~   bus1=F10_Node2.1.2.3
-~   bus2=F10_Node3.1.2.3             // DT_F10_2 location
-~   length=3.5
-~   linecode=RACOON_33kV
-~   units=km
+// F10_Sec3 REMOVED - Replaced by SEC_F10 in Switches.dss
+// New Line.F10_Sec3
+// ~   phases=3
+// ~   bus1=F10_Node2.1.2.3
+// ~   bus2=F10_Node3.1.2.3             // DT_F10_2 location
+// ~   length=3.5
+// ~   linecode=RACOON_33kV
+// ~   units=km
 
 New Line.F10_Sec4
 ~   phases=3
@@ -290,13 +296,14 @@ New Line.F11_Sec2
 ~   linecode=LYNX_33kV
 ~   units=km
 
-New Line.F11_Sec3
-~   phases=3
-~   bus1=F11_Node2.1.2.3
-~   bus2=F11_Node3.1.2.3             // DT_F11_Commercial location
-~   length=1.5
-~   linecode=XLPE_185_33kV     // Underground in town center
-~   units=km
+// F11_Sec3 REMOVED - Replaced by SEC_F11 in Switches.dss
+// New Line.F11_Sec3
+// ~   phases=3
+// ~   bus1=F11_Node2.1.2.3
+// ~   bus2=F11_Node3.1.2.3             // DT_F11_Commercial location
+// ~   length=1.5
+// ~   linecode=XLPE_185_33kV     // Underground in town center
+// ~   units=km
 
 New Line.F11_Sec4
 ~   phases=3
@@ -346,13 +353,14 @@ New Line.F12_Sec2
 ~   linecode=RACOON_33kV
 ~   units=km
 
-New Line.F12_Sec3
-~   phases=3
-~   bus1=F12_Node2.1.2.3
-~   bus2=F12_Node3.1.2.3             // DT_F12_2 location (end)
-~   length=2.5
-~   linecode=RACOON_33kV
-~   units=km
+// F12_Sec3 REMOVED - Replaced by SEC_F12 in Switches.dss
+// New Line.F12_Sec3
+// ~   phases=3
+// ~   bus1=F12_Node2.1.2.3
+// ~   bus2=F12_Node3.1.2.3             // DT_F12_2 location (end)
+// ~   length=2.5
+// ~   linecode=RACOON_33kV
+// ~   units=km
 
 // OLD TIE SWITCHES REMOVED - Replaced by new tie switches in Switches.dss
 // The new tie switch topology connects adjacent feeders at their endpoints:

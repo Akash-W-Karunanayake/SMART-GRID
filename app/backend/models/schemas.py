@@ -246,29 +246,87 @@ class SolarForecastResponse(BaseModelNoProtected):
     mape: Optional[float] = None
 
 
-# ============== Self-Healing Schemas (for future MARL integration) ==============
+# ============== Self-Healing Schemas ==============
 
-class FaultEvent(BaseModel):
-    fault_id: str
-    location: str
+class FaultTypeEnum(str, Enum):
+    THREE_PHASE = "3phase"
+    LINE_TO_GROUND = "lg"
+    LINE_TO_LINE = "ll"
+    LINE_TO_LINE_TO_GROUND = "llg"
+
+
+class FaultReport(BaseModel):
+    """Input: fault detected by diagnostics or manually specified."""
+    fault_type: FaultTypeEnum = Field(..., description="Type of fault")
+    fault_location: str = Field(..., description="Bus name (e.g. 'F09_Node3')")
+    fault_resistance_ohms: float = Field(default=0.01, ge=0)
+
+
+class SwitchAction(BaseModel):
+    switch_name: str
+    action: str = Field(..., description="'open' or 'close'")
+    reason: str = ""
+
+
+class IsolationResult(BaseModel):
+    success: bool
+    fault_location: str
     fault_type: str
-    timestamp: float
-    severity: str
+    feeder: str = ""
+    isolated_zone_buses: List[str] = Field(default_factory=list)
+    switch_actions: List[SwitchAction] = Field(default_factory=list)
+    de_energized_loads: List[str] = Field(default_factory=list)
+    num_de_energized_loads: int = 0
+    critical_loads_affected: List[str] = Field(default_factory=list)
+    message: str = ""
 
 
-class RestorationAction(BaseModel):
-    action_id: str
-    action_type: str  # 'switch_open', 'switch_close', 'isolate', 'restore'
-    target_element: str
-    timestamp: float
-    agent_id: Optional[str] = None
+class RestorationRequest(BaseModel):
+    strategy: str = Field(default="auto", description="'auto', 'marl', or 'heuristic'")
 
 
-class SelfHealingStatus(BaseModel):
-    active_faults: List[FaultEvent]
-    pending_actions: List[RestorationAction]
-    completed_actions: List[RestorationAction]
-    system_health: float  # 0-100%
+class RestorationResult(BaseModel):
+    strategy: str
+    closed_switches: List[str]
+    energized_loads: List[str]
+    de_energized_loads: List[str]
+    restoration_pct: float
+    converged: bool
+    radial: bool
+    voltage_violations: List[str] = Field(default_factory=list)
+    overloaded_lines: List[str] = Field(default_factory=list)
+
+
+class SwitchStateResponse(BaseModel):
+    switches: Dict[str, bool]
+
+
+class SwitchControlRequest(BaseModel):
+    closed: bool = Field(..., description="True to close, False to open")
+
+
+class FLISRRequest(BaseModel):
+    """Input for full FLISR pipeline (fault -> isolate -> restore)."""
+    fault_bus: str = Field(..., description="Bus name where the fault occurs")
+    fault_type: FaultTypeEnum = Field(default=FaultTypeEnum.THREE_PHASE)
+    fault_resistance: float = Field(default=0.01, ge=0)
+    restoration_strategy: str = Field(
+        default="auto",
+        description="'auto', 'marl', or 'heuristic'",
+    )
+
+
+class FLISRResponse(BaseModel):
+    """Combined result of the full FLISR pipeline."""
+    fault: Dict[str, str]
+    isolation: IsolationResult
+    restoration: RestorationResult
+    grid_state: Dict[str, Any]
+
+
+class GridResetResponse(BaseModel):
+    success: bool
+    message: str
 
 
 # ============== Fault Injection Schemas ==============

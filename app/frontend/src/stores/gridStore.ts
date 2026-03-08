@@ -3,7 +3,10 @@
  */
 
 import { create } from 'zustand';
-import type { GridState, SimulationStatus, SimulationHistoryItem, Topology } from '../types';
+import type {
+  GridState, SimulationStatus, SimulationHistoryItem, Topology,
+  IsolationResult, RestorationResult, SelfHealingGridState,
+} from '../types';
 
 /** Per-step pipeline data used by Dashboard charts */
 export interface PipelineStep {
@@ -55,6 +58,8 @@ export interface LiveMetrics {
   power_F12_kw?: number;
 }
 
+export type FLISRPhase = 'idle' | 'fault_injected' | 'isolating' | 'isolated' | 'restoring' | 'restored';
+
 interface GridStore {
   // State
   gridState: GridState | null;
@@ -68,6 +73,20 @@ interface GridStore {
   pipelineSteps: PipelineStep[];
   /** Date of the last pipeline simulation */
   lastSimDate: string | null;
+
+  // FLISR state
+  flisrPhase: FLISRPhase;
+  faultBus: string | null;
+  faultType: string | null;
+  faultFeeder: string | null;
+  isolationResult: IsolationResult | null;
+  restorationResult: RestorationResult | null;
+  selfHealingGridState: SelfHealingGridState | null;
+  /** Grid state snapshot right after isolation (before restoration) */
+  isolationGridState: SelfHealingGridState | null;
+  deEnergizedBuses: string[];
+  deEnergizedLoads: string[];
+  restoredLoads: string[];
 
   // ─── Playback state ───────────────────────────────────
   /** Whether playback is actively running (timer is ticking) */
@@ -102,6 +121,15 @@ interface GridStore {
   setError: (error: string | null) => void;
   setPipelineSteps: (steps: PipelineStep[], date: string) => void;
 
+  // FLISR actions
+  setFLISRPhase: (phase: FLISRPhase) => void;
+  setFaultInfo: (bus: string, faultType: string, feeder: string) => void;
+  setIsolationResult: (result: IsolationResult) => void;
+  setRestorationResult: (result: RestorationResult) => void;
+  setSelfHealingGridState: (state: SelfHealingGridState) => void;
+  setIsolationGridState: (state: SelfHealingGridState) => void;
+  resetFLISR: () => void;
+
   // Playback actions
   startPlayback: (totalDays: number, firstDate: string) => void;
   setPlaybackDay: (dayIndex: number, date: string) => void;
@@ -115,6 +143,20 @@ interface GridStore {
 
   clearState: () => void;
 }
+
+const initialFLISRState = {
+  flisrPhase: 'idle' as FLISRPhase,
+  faultBus: null as string | null,
+  faultType: null as string | null,
+  faultFeeder: null as string | null,
+  isolationResult: null as IsolationResult | null,
+  restorationResult: null as RestorationResult | null,
+  selfHealingGridState: null as SelfHealingGridState | null,
+  isolationGridState: null as SelfHealingGridState | null,
+  deEnergizedBuses: [] as string[],
+  deEnergizedLoads: [] as string[],
+  restoredLoads: [] as string[],
+};
 
 const initialPlaybackState = {
   playbackPlaying: false,
@@ -140,6 +182,7 @@ export const useGridStore = create<GridStore>((set) => ({
   error: null,
   pipelineSteps: [],
   lastSimDate: null,
+  ...initialFLISRState,
   ...initialPlaybackState,
 
   // Actions
@@ -163,6 +206,42 @@ export const useGridStore = create<GridStore>((set) => ({
   setError: (error) => set({ error }),
 
   setPipelineSteps: (steps, date) => set({ pipelineSteps: steps, lastSimDate: date }),
+
+  // ─── FLISR actions ─────────────────────────────────────
+
+  setFLISRPhase: (phase) => set({ flisrPhase: phase }),
+
+  setFaultInfo: (bus, faultType, feeder) =>
+    set({
+      faultBus: bus,
+      faultType: faultType,
+      faultFeeder: feeder,
+      flisrPhase: 'fault_injected',
+    }),
+
+  setIsolationResult: (result) =>
+    set({
+      isolationResult: result,
+      flisrPhase: 'isolated',
+      deEnergizedBuses: result.isolated_zone_buses,
+      deEnergizedLoads: result.de_energized_loads,
+    }),
+
+  setRestorationResult: (result) =>
+    set({
+      restorationResult: result,
+      flisrPhase: 'restored' as FLISRPhase,
+      restoredLoads: result.energized_loads,
+      deEnergizedLoads: result.de_energized_loads,
+    }),
+
+  setSelfHealingGridState: (gridState) =>
+    set({ selfHealingGridState: gridState }),
+
+  setIsolationGridState: (gridState) =>
+    set({ isolationGridState: gridState }),
+
+  resetFLISR: () => set({ ...initialFLISRState }),
 
   // ─── Playback actions ───────────────────────────────────
 
@@ -241,6 +320,7 @@ export const useGridStore = create<GridStore>((set) => ({
       pipelineSteps: [],
       lastSimDate: null,
       error: null,
+      ...initialFLISRState,
       ...initialPlaybackState,
     }),
 }));

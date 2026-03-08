@@ -156,9 +156,9 @@ New Monitor.Mon_F09_Sec3
 ~   mode=0
 ~   ppolar=yes
 
-// F09 Section 4 (towards end of feeder)
+// F09 Section 4 (towards end of feeder) - now SEC_F09 in Switches.dss
 New Monitor.Mon_F09_Sec4
-~   element=Line.F09_Sec4
+~   element=Line.SEC_F09
 ~   terminal=1
 ~   mode=0
 ~   ppolar=yes
@@ -259,7 +259,7 @@ New Monitor.Mon_BusCoupler Element=Line.BusCoupler Terminal=1 Mode=1 PPolar=no
 
 // UJPS Total Output
 New Monitor.Mon_UJPS
-~   element=Line.F05_Sec3       // Line to UJPS
+~   element=Line.SEC_F05        // Line to UJPS (was F05_Sec3, now SEC_F05)
 ~   terminal=2
 ~   mode=1
 ~   ppolar=no

@@ -255,6 +255,67 @@ class ApiService {
     return this.request(`/pipeline/cancel/${taskId}`, { method: 'POST' });
   }
 
+  // ============== Self-Healing API ==============
+
+  async runFLISR(
+    faultBus: string,
+    faultType: string = '3phase',
+    faultResistance: number = 0.01,
+    restorationStrategy: string = 'auto'
+  ) {
+    return this.request<import('../types').FLISRResponse>('/self-healing/flisr', {
+      method: 'POST',
+      body: JSON.stringify({
+        fault_bus: faultBus,
+        fault_type: faultType,
+        fault_resistance: faultResistance,
+        restoration_strategy: restorationStrategy,
+      }),
+    });
+  }
+
+  async isolateFault(faultBus: string, faultType: string = '3phase', faultResistance: number = 0.01) {
+    return this.request<import('../types').IsolationResult>('/self-healing/isolate', {
+      method: 'POST',
+      body: JSON.stringify({
+        fault_type: faultType,
+        fault_location: faultBus,
+        fault_resistance_ohms: faultResistance,
+      }),
+    });
+  }
+
+  async restoreService(strategy: string = 'auto') {
+    return this.request<import('../types').RestorationResult>('/self-healing/restore', {
+      method: 'POST',
+      body: JSON.stringify({ strategy }),
+    });
+  }
+
+  async getSwitchStates() {
+    return this.request<{ switches: Record<string, boolean> }>('/self-healing/switches');
+  }
+
+  async controlSwitch(name: string, closed: boolean) {
+    return this.request<{ switch: string; closed: boolean; converged: boolean; message: string }>(
+      `/self-healing/switch/${name}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ closed }),
+      }
+    );
+  }
+
+  async getSelfHealingGridState() {
+    return this.request<import('../types').SelfHealingGridState>('/self-healing/grid-state');
+  }
+
+  async resetGrid() {
+    return this.request<{ success: boolean; message: string }>('/self-healing/reset', {
+      method: 'POST',
+    });
+  }
+
   // ============== Health Check ==============
 
   async healthCheck() {

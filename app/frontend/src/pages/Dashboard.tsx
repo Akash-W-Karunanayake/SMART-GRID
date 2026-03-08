@@ -23,10 +23,13 @@ import {
   Maximize,
   Minimize,
   LocateFixed,
+  Shield,
+  RotateCcw,
+  ChevronRight,
 } from 'lucide-react';
-import { useGridStore, type LiveMetrics } from '../stores/gridStore';
+import { useGridStore, type LiveMetrics, type FLISRPhase } from '../stores/gridStore';
 import api from '../services/api';
-import type { Topology, TopologyNode, TopologyEdge, FaultPayload } from '../types';
+import type { Topology, TopologyNode, TopologyEdge, FaultPayload, IsolationResult, RestorationResult } from '../types';
 import { getGridSvgIcon, type GridSvgProps } from '../components/grid/GridSvgIcons';
 import { TransformerSvg } from '../components/grid/GridSvgIcons';
 import TransformerNode from '../components/grid/TransformerNode';
@@ -39,6 +42,21 @@ const FAULT_TYPE_PHASES: Record<string, string[]> = {
   LLG: ['ABG', 'BCG', 'CAG'],
   LLL: ['ABC'],
 };
+
+// FLISR fault types for self-healing (maps to backend FaultTypeEnum)
+const FLISR_FAULT_TYPES = [
+  { value: '3phase', label: '3-Phase' },
+  { value: 'lg', label: 'Line-Ground' },
+  { value: 'll', label: 'Line-Line' },
+  { value: 'llg', label: 'Line-Line-Ground' },
+];
+
+// Restoration strategies
+const RESTORATION_STRATEGIES = [
+  { value: 'auto', label: 'Auto (MARL -> Heuristic)' },
+  { value: 'marl', label: 'MARL + GNN' },
+  { value: 'heuristic', label: 'Heuristic (Greedy)' },
+];
 
 // ─── Fault Detection Banner ───────────────────────────────────
 function FaultBanner({ fault }: { fault?: FaultPayload | null }) {
@@ -180,37 +198,80 @@ function LatestPredictionCards({ fault }: { fault?: FaultPayload | null }) {
 function SvgGridNode({ data }: { data: any }) {
   const SvgIcon: React.FC<GridSvgProps> = data.svgIcon;
 
+  type SvgStatus = 'normal' | 'low' | 'high' | 'off' | 'fault';
+
   // For PV/solar nodes: show 'off' status when it's nighttime
-  const effectiveStatus = data.isSolar && data.solarOff ? 'off' : 'normal';
+  const effectiveStatus: SvgStatus = data.isSolar && data.solarOff ? 'off' : 'normal';
 
   // Fault heat map: override with 'fault' status when this bus is fault-highlighted
-  const displayStatus = data.faultHighlight ? 'fault' : effectiveStatus;
+  let displayStatus: SvgStatus = data.faultHighlight ? 'fault' : effectiveStatus;
+
+  // FLISR visual overrides
+  if (data.isFlisrFaultBus) displayStatus = 'fault';
+  else if (data.isDeEnergized && !data.isRestoredNode) displayStatus = 'off';  // dark/gray for power outage
+  // Restored nodes get normal status (green)
+
+  // Container styling for FLISR states
+  let containerClass = '';
+  let iconWrapClass = '';
+  if (data.isFlisrFaultBus) {
+    containerClass = 'bg-red-900/60 rounded-lg p-1 border-2 border-red-500 animate-pulse';
+    iconWrapClass = '';
+  } else if (data.isDeEnergized && !data.isRestoredNode) {
+    containerClass = 'bg-slate-800/80 rounded-lg p-1 border-2 border-red-800 opacity-50';
+    iconWrapClass = 'grayscale';
+  } else if (data.isRestoredNode) {
+    containerClass = 'bg-blue-900/40 rounded-lg p-1 border-2 border-blue-500';
+    iconWrapClass = '';
+  }
 
   return (
-    <div className={`relative flex flex-col items-center group ${data.isPlaybackActive ? 'transition-all duration-300' : ''}`}>
+    <div className={`relative flex flex-col items-center group transition-all duration-500`}>
       <Handle type="target" position={Position.Top} className="!bg-slate-400 !w-2 !h-2" />
       <Handle type="target" position={Position.Left} className="!bg-slate-400 !w-2 !h-2" />
 
-      <div className={data.isPlaybackActive && !data.solarOff && data.isSolar ? 'animate-pulse' : ''}>
-        <SvgIcon size={28} status={displayStatus} />
+      <div className={containerClass}>
+        <div className={iconWrapClass}>
+          <SvgIcon size={28} status={displayStatus} />
+        </div>
       </div>
 
       <div
-        className="font-semibold text-white text-[10px] mt-0.5 max-w-[90px] truncate text-center"
+        className={`font-semibold text-[10px] mt-0.5 max-w-[90px] truncate text-center ${
+          data.isDeEnergized && !data.isRestoredNode ? 'text-slate-500' :
+          data.isFlisrFaultBus ? 'text-red-400 font-bold' :
+          data.isRestoredNode ? 'text-blue-300' :
+          'text-white'
+        }`}
         title={data.label}
       >
         {data.shortLabel}
       </div>
 
-      {data.kv != null && (
+      {data.kv != null && !data.isDeEnergized && !data.isFlisrFaultBus && (
         <div className="text-[8px] text-slate-400">{data.kv} kV</div>
       )}
 
       {/* Show fault probability when highlighted */}
-      {data.faultProb != null && (
+      {data.faultProb != null && !data.isFlisrFaultBus && (
         <div className="text-[9px] font-medium text-red-400">
           {(data.faultProb * 100).toFixed(1)}%
         </div>
+      )}
+
+      {/* FLISR fault label */}
+      {data.isFlisrFaultBus && (
+        <div className="text-[9px] font-bold text-red-400 bg-red-900/80 px-1.5 rounded mt-0.5">FAULT</div>
+      )}
+
+      {/* FLISR de-energized label */}
+      {data.isDeEnergized && !data.isRestoredNode && (
+        <div className="text-[8px] font-bold text-red-500 bg-red-900/60 px-1 rounded mt-0.5">NO POWER</div>
+      )}
+
+      {/* FLISR restored label */}
+      {data.isRestoredNode && (
+        <div className="text-[8px] font-bold text-blue-400 bg-blue-900/60 px-1 rounded mt-0.5">RESTORED</div>
       )}
 
       {/* Show live power output for generators during playback */}
@@ -265,6 +326,15 @@ function buildFlowGraph(
   liveMetrics?: LiveMetrics | null,
   isPlaybackActive?: boolean,
   faultPayload?: FaultPayload | null,
+  flisrState?: {
+    phase: FLISRPhase;
+    faultBus: string | null;
+    deEnergizedBuses: string[];
+    isolationResult: IsolationResult | null;
+    restorationResult: RestorationResult | null;
+    selfHealingGridState: any;
+    isolationGridState: any;
+  } | null,
 ): { nodes: Node[]; edges: Edge[] } {
   const nodes: Node[] = [];
   const edges: Edge[] = [];
@@ -299,6 +369,66 @@ function buildFlowGraph(
   // Determine solar activity from live metrics
   const solarActive = liveMetrics ? liveMetrics.total_solar_kw > 0 : false;
 
+  // FLISR state lookups
+  const flisrActive = flisrState && flisrState.phase !== 'idle';
+  const flisrFaultBus = flisrState?.faultBus?.toLowerCase() ?? null;
+  const flisrRestored = flisrState?.phase === 'restored';
+
+  // Build de-energized bus set from VOLTAGE DATA (catches ALL affected buses)
+  const flisrDeEnergized = new Set<string>();
+  const flisrRestoredBuses = new Set<string>();
+
+  if (flisrActive && flisrState?.selfHealingGridState) {
+    const voltages = flisrState.selfHealingGridState.bus_voltages_pu ?? {};
+    // After isolation: buses with near-zero voltage are de-energized
+    if (!flisrRestored) {
+      for (const [bus, vpu] of Object.entries(voltages)) {
+        if ((vpu as number) < 0.1) {
+          flisrDeEnergized.add(bus.toLowerCase());
+        }
+      }
+    }
+    // After restoration: compare CURRENT voltages with ISOLATION snapshot
+    if (flisrRestored) {
+      // Find buses that were de-energized during isolation (from isolation grid state snapshot)
+      const isoVoltages = flisrState.isolationGridState?.bus_voltages_pu ?? {};
+      const prevDeEnergized = new Set<string>();
+      for (const [bus, vpu] of Object.entries(isoVoltages)) {
+        if ((vpu as number) < 0.1) {
+          prevDeEnergized.add(bus.toLowerCase());
+        }
+      }
+      // Now check current voltages: still dead or restored?
+      for (const [bus, vpu] of Object.entries(voltages)) {
+        const busLower = bus.toLowerCase();
+        if ((vpu as number) < 0.1) {
+          flisrDeEnergized.add(busLower); // still de-energized after restoration
+        } else if (prevDeEnergized.has(busLower)) {
+          flisrRestoredBuses.add(busLower); // was de-energized, now restored!
+        }
+      }
+    }
+  } else if (flisrActive) {
+    // Fallback: use isolated_zone_buses if no grid state yet
+    for (const b of (flisrState?.deEnergizedBuses ?? [])) {
+      flisrDeEnergized.add(b.toLowerCase());
+    }
+  }
+
+  // Switch states from grid state (FIX: proper precedence with parentheses)
+  const flisrSwitchStates: Record<string, boolean> | null =
+    flisrState?.selfHealingGridState?.all_switch_states
+    ?? (flisrState?.isolationResult
+      ? (() => {
+          const states: Record<string, boolean> = {};
+          for (const action of (flisrState.isolationResult.switch_actions ?? [])) {
+            states[action.switch_name] = action.action === 'close';
+          }
+          return states;
+        })()
+      : null);
+  const flisrClosedTies = new Set(flisrState?.restorationResult?.closed_switches ?? []);
+
   // Create bus nodes (SVG icons)
   for (const node of topology.nodes) {
     const pos = posMap.get(node.id) ?? { x: 0, y: 0 };
@@ -306,7 +436,16 @@ function buildFlowGraph(
     const isFaultActive = faultPayload?.prediction?.is_fault === true;
     const locProbs = faultPayload?.prediction?.location_probabilities;
     const faultProb = isFaultActive && locProbs ? (locProbs[node.id] ?? null) : null;
-    const faultHighlight = faultProb !== null && faultProb > 0.01;
+    let faultHighlight = faultProb !== null && faultProb > 0.01;
+
+    // FLISR overrides
+    const nodeIdLower = node.id.toLowerCase();
+    const isFlisrFaultBus = flisrActive && nodeIdLower === flisrFaultBus;
+    const isDeEnergized = flisrActive && flisrDeEnergized.has(nodeIdLower) && !isFlisrFaultBus;
+    const isRestoredNode = flisrRestored && flisrRestoredBuses.has(nodeIdLower);
+
+    // FLISR fault bus overrides the diagnostics fault highlight
+    if (isFlisrFaultBus) faultHighlight = true;
 
     const shortLabel = node.label.length > 14
       ? node.label.substring(0, 14) + '...'
@@ -333,12 +472,16 @@ function buildFlowGraph(
         shortLabel,
         kv: node.kv,
         svgIcon: getGridSvgIcon(node.label),
-        faultHighlight,
+        faultHighlight: faultHighlight || isFlisrFaultBus,
         faultProb,
         isSolar,
         solarOff: isSolar && isPlaybackActive && !solarActive,
         isPlaybackActive: !!isPlaybackActive,
         liveOutputKw,
+        // FLISR visual states
+        isDeEnergized,
+        isFlisrFaultBus,
+        isRestoredNode,
       },
     });
   }
@@ -365,40 +508,111 @@ function buildFlowGraph(
       },
     });
 
-    // Two edges: source → transformer → target (green for normal flow)
+    // Two edges: source → transformer → target
+    // Check if either side is de-energized for FLISR coloring
+    const teSrcLower = te.source.toLowerCase();
+    const teTgtLower = te.target.toLowerCase();
+    const teSrcDead = flisrActive && flisrDeEnergized.has(teSrcLower);
+    const teTgtDead = flisrActive && flisrDeEnergized.has(teTgtLower);
+    const teInDeadZone = teSrcDead || teTgtDead;
+
+    const teColor = teInDeadZone ? '#374151' : '#22c55e';
+    const teAnimated = !teInDeadZone;
+    const teWidth = teInDeadZone ? 1 : 2;
+
     edges.push({
       id: `${te.id}_a`,
       source: te.source,
       target: virtualId,
       type: 'smoothstep',
-      animated: true,
-      style: { stroke: '#22c55e', strokeWidth: 2 },
-      markerEnd: { type: MarkerType.ArrowClosed, color: '#22c55e', width: 12, height: 12 },
+      animated: teAnimated,
+      style: { stroke: teColor, strokeWidth: teWidth },
+      markerEnd: { type: MarkerType.ArrowClosed, color: teColor, width: 12, height: 12 },
     });
     edges.push({
       id: `${te.id}_b`,
       source: virtualId,
       target: te.target,
       type: 'smoothstep',
-      animated: true,
-      style: { stroke: '#22c55e', strokeWidth: 2 },
-      markerEnd: { type: MarkerType.ArrowClosed, color: '#22c55e', width: 12, height: 12 },
+      animated: teAnimated,
+      style: { stroke: teColor, strokeWidth: teWidth },
+      markerEnd: { type: MarkerType.ArrowClosed, color: teColor, width: 12, height: 12 },
     });
   }
 
   // Create line edges
   for (const edge of lineEdges) {
     const lineData = gridState?.lines?.[edge.label];
-    const isActive = lineData?.enabled !== false;
-    const strokeColor = isActive ? '#22c55e' : '#6b7280';
+    let isActive = lineData?.enabled !== false;
+    let strokeColor = isActive ? '#22c55e' : '#6b7280';
+    let animated = isActive;
+    let strokeDasharray: string | undefined;
+    let strokeWidth = 2;
+
+    if (flisrActive) {
+      const srcLower = edge.source.toLowerCase();
+      const tgtLower = edge.target.toLowerCase();
+      const srcDead = flisrDeEnergized.has(srcLower);
+      const tgtDead = flisrDeEnergized.has(tgtLower);
+      const srcIsFault = srcLower === flisrFaultBus;
+      const tgtIsFault = tgtLower === flisrFaultBus;
+
+      // 1) Closed tie switch = BLUE (alternative restoration path)
+      if (flisrClosedTies.has(edge.label)) {
+        strokeColor = '#3b82f6';
+        animated = true;
+        strokeDasharray = undefined;
+        strokeWidth = 3;
+      }
+      // 2) Opened switch (CB/SEC) = DASHED RED-GRAY
+      else if (flisrSwitchStates && flisrSwitchStates[edge.label] === false) {
+        strokeColor = '#ef4444';
+        animated = false;
+        strokeDasharray = '8 4';
+        strokeWidth = 2;
+      }
+      // 3) Edge connecting to/from fault bus = RED
+      else if (srcIsFault || tgtIsFault) {
+        strokeColor = '#ef4444';
+        animated = false;
+        strokeWidth = 2;
+      }
+      // 4) Edge where BOTH ends are de-energized = DARK GRAY (dead zone)
+      else if (srcDead && tgtDead) {
+        strokeColor = '#374151';
+        animated = false;
+        strokeWidth = 1;
+      }
+      // 5) Edge where one end is de-energized = boundary of outage
+      else if (srcDead || tgtDead) {
+        strokeColor = '#6b7280';
+        animated = false;
+        strokeDasharray = '4 4';
+        strokeWidth = 2;
+      }
+      // 6) Edge between two restored buses = GREEN with blue tint
+      else if (flisrRestored) {
+        const srcRestored = flisrRestoredBuses.has(srcLower);
+        const tgtRestored = flisrRestoredBuses.has(tgtLower);
+        if (srcRestored || tgtRestored) {
+          strokeColor = '#22c55e';
+          animated = true;
+          strokeWidth = 2;
+        }
+      }
+    }
 
     edges.push({
       id: edge.id,
       source: edge.source,
       target: edge.target,
       type: 'smoothstep',
-      animated: isActive,
-      style: { stroke: strokeColor, strokeWidth: 2 },
+      animated,
+      style: {
+        stroke: strokeColor,
+        strokeWidth,
+        ...(strokeDasharray ? { strokeDasharray } : {}),
+      },
       markerEnd: {
         type: MarkerType.ArrowClosed,
         color: strokeColor,
@@ -617,9 +831,464 @@ function FaultInjectionPanel({
   );
 }
 
+// ─── FLISR Timeline Stepper ──────────────────────────────────
+function FLISRTimeline({ phase }: { phase: FLISRPhase }) {
+  const steps = [
+    { key: 'fault_injected', label: 'Fault Injected' },
+    { key: 'isolated', label: 'Isolated' },
+    { key: 'restored', label: 'Restored' },
+  ];
+
+  const phaseOrder = ['idle', 'fault_injected', 'isolating', 'isolated', 'restoring', 'restored'];
+  const currentIdx = phaseOrder.indexOf(phase);
+
+  return (
+    <div className="flex items-center justify-between py-2">
+      {steps.map((step, i) => {
+        const stepPhaseIdx = phaseOrder.indexOf(step.key);
+        const isDone = currentIdx >= stepPhaseIdx;
+        const isActive = phase === step.key || (step.key === 'isolated' && phase === 'restoring');
+
+        return (
+          <div key={step.key} className="flex items-center flex-1">
+            <div className="flex flex-col items-center flex-1">
+              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold border-2 ${
+                isDone
+                  ? 'bg-green-600 border-green-500 text-white'
+                  : isActive
+                    ? 'bg-amber-600 border-amber-500 text-white animate-pulse'
+                    : 'bg-slate-700 border-slate-600 text-slate-400'
+              }`}>
+                {isDone ? '\u2713' : i + 1}
+              </div>
+              <span className={`text-[9px] mt-1 ${isDone ? 'text-green-400' : 'text-slate-500'}`}>
+                {step.label}
+              </span>
+            </div>
+            {i < steps.length - 1 && (
+              <ChevronRight className={`w-4 h-4 mx-1 ${isDone ? 'text-green-500' : 'text-slate-600'}`} />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Isolation Result Panel ──────────────────────────────────
+function IsolationResultPanel({ result }: { result: IsolationResult }) {
+  return (
+    <div className="space-y-2">
+      <div className="text-xs">
+        <div className="flex justify-between">
+          <span className="text-slate-400">Feeder:</span>
+          <span className="text-white font-mono">{result.feeder}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-slate-400">De-energized:</span>
+          <span className="text-red-400 font-mono">{result.num_de_energized_loads} loads</span>
+        </div>
+      </div>
+      {result.de_energized_loads.length > 0 && (
+        <div className="space-y-1">
+          {result.de_energized_loads.map((ld) => (
+            <div key={ld} className="flex items-center text-[10px]">
+              <div className="w-2 h-2 rounded-full bg-red-500 mr-1.5" />
+              <span className="text-slate-300">{ld}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {result.critical_loads_affected.length > 0 && (
+        <div className="bg-red-900/40 border border-red-600 rounded p-2">
+          <p className="text-[10px] text-red-400 font-medium">CRITICAL LOADS AFFECTED:</p>
+          {result.critical_loads_affected.map((ld) => (
+            <p key={ld} className="text-[10px] text-red-300">{ld}</p>
+          ))}
+        </div>
+      )}
+      <div className="space-y-1">
+        <p className="text-[10px] text-slate-400 font-medium">Switch Actions:</p>
+        {result.switch_actions.map((sa, i) => (
+          <div key={i} className="flex items-center text-[10px]">
+            <span className={`font-mono mr-1 ${sa.action === 'open' ? 'text-red-400' : 'text-green-400'}`}>
+              {sa.action === 'open' ? '\u25CB' : '\u25CF'}
+            </span>
+            <span className="text-slate-300">{sa.switch_name} - {sa.reason}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Restoration Result Panel ────────────────────────────────
+function RestorationResultPanel({ result }: { result: RestorationResult }) {
+  return (
+    <div className="space-y-2">
+      <div className="text-xs space-y-1">
+        <div className="flex justify-between">
+          <span className="text-slate-400">Strategy:</span>
+          <span className="text-white font-mono">{result.strategy}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-slate-400">Restoration:</span>
+          <span className={`font-bold font-mono ${result.restoration_pct >= 100 ? 'text-green-400' : result.restoration_pct > 0 ? 'text-amber-400' : 'text-red-400'}`}>
+            {result.restoration_pct.toFixed(1)}%
+          </span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-slate-400">Converged:</span>
+          <span className={result.converged ? 'text-green-400' : 'text-red-400'}>
+            {result.converged ? 'Yes' : 'No'}
+          </span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-slate-400">Radial:</span>
+          <span className={result.radial ? 'text-green-400' : 'text-red-400'}>
+            {result.radial ? 'Yes' : 'No'}
+          </span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-slate-400">Violations:</span>
+          <span className="text-white">{result.voltage_violations.length}</span>
+        </div>
+      </div>
+      {result.closed_switches.length > 0 && (
+        <div>
+          <p className="text-[10px] text-slate-400 font-medium">Closed Tie Switches:</p>
+          {result.closed_switches.map((sw) => (
+            <div key={sw} className="flex items-center text-[10px]">
+              <div className="w-2 h-2 rounded-full bg-blue-500 mr-1.5" />
+              <span className="text-blue-300 font-mono">{sw}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {result.de_energized_loads.length > 0 && (
+        <div>
+          <p className="text-[10px] text-slate-400 font-medium">Still De-energized:</p>
+          {result.de_energized_loads.map((ld) => (
+            <div key={ld} className="flex items-center text-[10px]">
+              <div className="w-2 h-2 rounded-full bg-red-500 mr-1.5" />
+              <span className="text-red-300">{ld}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Switch State Table ────────────────────────────────────
+function SwitchStateTable({ switchStates }: { switchStates: Record<string, boolean> | null }) {
+  if (!switchStates) return null;
+
+  const entries = Object.entries(switchStates).sort((a, b) => a[0].localeCompare(b[0]));
+
+  return (
+    <div className="card">
+      <h3 className="font-semibold text-white mb-2 text-sm">Switch States</h3>
+      <div className="space-y-1 max-h-64 overflow-y-auto">
+        {entries.map(([name, closed]) => (
+          <div key={name} className="flex items-center justify-between text-[10px] py-0.5">
+            <span className="text-slate-300 font-mono">{name}</span>
+            <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${
+              closed
+                ? 'bg-green-900/50 text-green-400'
+                : 'bg-red-900/50 text-red-400'
+            }`}>
+              {closed ? 'CLOSED' : 'OPEN'}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── FLISR Control Panel ──────────────────────────────────
+function FLISRPanel({ topology }: { topology: Topology | null }) {
+  const {
+    flisrPhase, faultBus, faultType, isolationResult, restorationResult,
+    setFLISRPhase, setFaultInfo, setIsolationResult,
+    setRestorationResult, setSelfHealingGridState, setIsolationGridState, resetFLISR,
+  } = useGridStore();
+
+  const [selectedBus, setSelectedBus] = useState('');
+  const [selectedFaultType, setSelectedFaultType] = useState('3phase');
+  const [selectedStrategy, setSelectedStrategy] = useState('marl');
+  const [resistance] = useState(0.01);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const busNames = useMemo(() => {
+    if (!topology) return [];
+    return topology.nodes
+      .map(n => n.id)
+      .filter(id => {
+        const lower = id.toLowerCase();
+        if (lower.startsWith('bus_33kv')) return true;
+        if (/^f(0[5-9]|1[0-2])_node/.test(lower)) return true;
+        return false;
+      })
+      .sort();
+  }, [topology]);
+
+  const handleAutoFLISR = async () => {
+    if (!selectedBus) return;
+    setSubmitting(true);
+    setError(null);
+
+    try {
+      // Step 1: Reset grid for clean start
+      await api.resetGrid();
+      setFaultInfo(selectedBus, selectedFaultType, '');
+      setFLISRPhase('isolating');
+
+      // Step 2: Isolate fault — show the OUTAGE first
+      const isoResult = await api.isolateFault(selectedBus, selectedFaultType, resistance);
+      setIsolationResult(isoResult);
+      setFaultInfo(selectedBus, selectedFaultType, isoResult.feeder);
+
+      // Get grid state after isolation (shows all de-energized buses)
+      const isoGridState = await api.getSelfHealingGridState();
+      setSelfHealingGridState(isoGridState as any);
+      setIsolationGridState(isoGridState as any);  // Save for before/after comparison
+
+      // Pause so user can SEE the power outage (3 seconds)
+      await new Promise(resolve => setTimeout(resolve, 3000));
+
+      // Step 3: Restore service using MARL+GNN
+      setFLISRPhase('restoring');
+      const restResult = await api.restoreService(selectedStrategy);
+      setRestorationResult(restResult);
+
+      // Get final grid state (shows restored buses)
+      const finalGridState = await api.getSelfHealingGridState();
+      setSelfHealingGridState(finalGridState as any);
+    } catch (err: any) {
+      setError(err.message ?? 'FLISR failed');
+      if (useGridStore.getState().flisrPhase === 'isolating') {
+        setFLISRPhase('idle');
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleIsolate = async () => {
+    if (!selectedBus) return;
+    setSubmitting(true);
+    setError(null);
+
+    try {
+      // Reset grid first for a clean start
+      await api.resetGrid();
+      setFaultInfo(selectedBus, selectedFaultType, '');
+      setFLISRPhase('isolating');
+
+      const result = await api.isolateFault(selectedBus, selectedFaultType, resistance);
+      setIsolationResult(result);
+
+      // Fetch grid state after isolation (shows all de-energized buses)
+      const isoGridState = await api.getSelfHealingGridState();
+      setSelfHealingGridState(isoGridState as any);
+      setIsolationGridState(isoGridState as any);  // Save for before/after comparison
+    } catch (err: any) {
+      setError(err.message ?? 'Isolation failed');
+      setFLISRPhase('fault_injected');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleRestore = async () => {
+    setSubmitting(true);
+    setError(null);
+
+    try {
+      setFLISRPhase('restoring');
+      const result = await api.restoreService(selectedStrategy);
+      setRestorationResult(result);
+
+      const gridState = await api.getSelfHealingGridState();
+      setSelfHealingGridState(gridState as any);
+    } catch (err: any) {
+      setError(err.message ?? 'Restoration failed');
+      setFLISRPhase('isolated');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleReset = async () => {
+    setSubmitting(true);
+    setError(null);
+    try {
+      await api.resetGrid();
+      resetFLISR();
+    } catch (err: any) {
+      setError(err.message ?? 'Reset failed');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const isIdle = flisrPhase === 'idle';
+  const isIsolated = flisrPhase === 'isolated';
+
+  return (
+    <div className="card border-blue-700/50">
+      <h3 className="font-semibold text-white mb-3 text-sm flex items-center">
+        <Shield className="w-4 h-4 mr-1.5 text-blue-400" />
+        Self-Healing FLISR
+      </h3>
+
+      {/* Fault input (only when idle) */}
+      {isIdle && (
+        <div className="space-y-2">
+          <div>
+            <label className="text-[10px] text-slate-400 block mb-0.5">Target Bus</label>
+            <select
+              value={selectedBus}
+              onChange={(e) => setSelectedBus(e.target.value)}
+              className="w-full bg-slate-700 text-white text-xs rounded px-2 py-1.5 border border-slate-600"
+            >
+              <option value="">Select bus...</option>
+              {busNames.map((b) => (
+                <option key={b} value={b}>{b}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="text-[10px] text-slate-400 block mb-0.5">Fault Type</label>
+            <select
+              value={selectedFaultType}
+              onChange={(e) => setSelectedFaultType(e.target.value)}
+              className="w-full bg-slate-700 text-white text-xs rounded px-2 py-1.5 border border-slate-600"
+            >
+              {FLISR_FAULT_TYPES.map((ft) => (
+                <option key={ft.value} value={ft.value}>{ft.label}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="text-[10px] text-slate-400 block mb-0.5">Strategy</label>
+            <select
+              value={selectedStrategy}
+              onChange={(e) => setSelectedStrategy(e.target.value)}
+              className="w-full bg-slate-700 text-white text-xs rounded px-2 py-1.5 border border-slate-600"
+            >
+              {RESTORATION_STRATEGIES.map((s) => (
+                <option key={s.value} value={s.value}>{s.label}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex space-x-2 pt-1">
+            <button
+              onClick={handleAutoFLISR}
+              disabled={!selectedBus || submitting}
+              className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-600 disabled:text-slate-400
+                         text-white text-xs font-medium py-1.5 rounded transition-colors"
+            >
+              {submitting ? '...' : 'Auto FLISR'}
+            </button>
+            <button
+              onClick={handleIsolate}
+              disabled={!selectedBus || submitting}
+              className="flex-1 bg-amber-600 hover:bg-amber-500 disabled:bg-slate-600 disabled:text-slate-400
+                         text-white text-xs font-medium py-1.5 rounded transition-colors"
+            >
+              Isolate
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Active FLISR state */}
+      {!isIdle && (
+        <div className="space-y-3">
+          {/* Status */}
+          <div className="text-xs space-y-1">
+            <div className="flex justify-between">
+              <span className="text-slate-400">Bus:</span>
+              <span className="text-white font-mono">{faultBus}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-400">Type:</span>
+              <span className="text-white font-mono">{faultType}</span>
+            </div>
+          </div>
+
+          {/* Timeline */}
+          <FLISRTimeline phase={flisrPhase} />
+
+          {/* Isolation result */}
+          {isolationResult && (
+            <div>
+              <p className="text-[10px] text-slate-400 font-medium mb-1 uppercase">Isolation</p>
+              <IsolationResultPanel result={isolationResult} />
+            </div>
+          )}
+
+          {/* Restore button (only after isolation) */}
+          {isIsolated && (
+            <button
+              onClick={handleRestore}
+              disabled={submitting}
+              className="w-full bg-green-600 hover:bg-green-500 disabled:bg-slate-600
+                         text-white text-xs font-medium py-1.5 rounded transition-colors"
+            >
+              {submitting ? 'Restoring...' : 'Restore Service'}
+            </button>
+          )}
+
+          {/* Restoration result */}
+          {restorationResult && (
+            <div>
+              <p className="text-[10px] text-slate-400 font-medium mb-1 uppercase">Restoration</p>
+              <RestorationResultPanel result={restorationResult} />
+            </div>
+          )}
+
+          {/* Reset button */}
+          <button
+            onClick={handleReset}
+            disabled={submitting}
+            className="w-full bg-slate-600 hover:bg-slate-500 disabled:bg-slate-700
+                       text-white text-xs font-medium py-1.5 rounded transition-colors flex items-center justify-center"
+          >
+            <RotateCcw className="w-3 h-3 mr-1" />
+            {submitting ? '...' : 'Reset Grid'}
+          </button>
+        </div>
+      )}
+
+      {/* Error */}
+      {error && (
+        <p className="text-[10px] text-red-400 mt-2">{error}</p>
+      )}
+
+      {/* Loading overlay */}
+      {submitting && (
+        <div className="text-center py-2">
+          <div className="inline-block w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Side Panel Components ─────────────────────────────────────
 
 function ConnectionTypesLegend() {
+  const { flisrPhase } = useGridStore();
+  const showFlisr = flisrPhase !== 'idle';
+
   return (
     <div className="card">
       <h3 className="font-semibold text-white mb-3 text-sm">Connections</h3>
@@ -636,6 +1305,33 @@ function ConnectionTypesLegend() {
           <div className="w-6 h-0.5 bg-gray-500 mr-2" />
           <span className="text-slate-300">Inactive</span>
         </div>
+        {showFlisr && (
+          <>
+            <div className="border-t border-slate-600 pt-2 mt-2">
+              <span className="text-slate-400 text-[10px] font-medium">FLISR</span>
+            </div>
+            <div className="flex items-center">
+              <div className="w-3 h-3 rounded-full bg-red-500 animate-pulse mr-2" />
+              <span className="text-slate-300">Fault Bus</span>
+            </div>
+            <div className="flex items-center">
+              <div className="w-3 h-3 rounded-full bg-red-500/50 mr-2" />
+              <span className="text-slate-300">De-energized</span>
+            </div>
+            <div className="flex items-center">
+              <div className="w-6 h-0.5 mr-2" style={{ borderTop: '2px dashed #6b7280' }} />
+              <span className="text-slate-300">Opened Switch</span>
+            </div>
+            <div className="flex items-center">
+              <div className="w-6 h-0.5 bg-blue-500 mr-2" />
+              <span className="text-slate-300">Closed Tie Switch</span>
+            </div>
+            <div className="flex items-center">
+              <div className="w-3 h-3 rounded-full border-2 border-blue-500 mr-2" />
+              <span className="text-slate-300">Restored Node</span>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -758,6 +1454,17 @@ export default function Dashboard() {
     playbackDayIndex,
     playbackTotalDays,
     liveMetrics,
+    // FLISR state
+    flisrPhase,
+    faultBus,
+    faultType,
+    faultFeeder,
+    isolationResult,
+    restorationResult,
+    selfHealingGridState,
+    isolationGridState,
+    deEnergizedBuses,
+    deEnergizedLoads,
   } = useGridStore();
 
   const [loading, setLoading] = useState(false);
@@ -795,6 +1502,20 @@ export default function Dashboard() {
     }
   }, [gridState, topology, loadTopology]);
 
+  // Build FLISR state object for topology coloring
+  const flisrStateForGraph = useMemo(() => {
+    if (flisrPhase === 'idle') return null;
+    return {
+      phase: flisrPhase,
+      faultBus,
+      deEnergizedBuses,
+      isolationResult,
+      restorationResult,
+      selfHealingGridState,
+      isolationGridState,
+    };
+  }, [flisrPhase, faultBus, deEnergizedBuses, isolationResult, restorationResult, selfHealingGridState, isolationGridState]);
+
   // Update ReactFlow every 15-minute step (playbackStepIndex) for live voltage/flow updates
   useEffect(() => {
     if (topology) {
@@ -804,11 +1525,12 @@ export default function Dashboard() {
         liveMetrics,
         isActive,
         gridState?.fault ?? null,
+        flisrStateForGraph,
       );
       setNodes(flowNodes);
       setEdges(flowEdges);
     }
-  }, [topology, gridState, setNodes, setEdges, playbackStepIndex, isActive]);
+  }, [topology, gridState, setNodes, setEdges, playbackStepIndex, isActive, flisrStateForGraph]);
 
   // Handle node click
   const onNodeClick = useCallback((_: any, node: Node) => {
@@ -909,11 +1631,77 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Fault Detection Banner */}
-      <FaultBanner fault={gridState?.fault} />
+      {/* FLISR Status Banner */}
+      {flisrPhase !== 'idle' && (() => {
+        // Count de-energized and restored buses from voltage data
+        const currentVoltages = selfHealingGridState?.bus_voltages_pu ?? {};
+        const isoVoltages = isolationGridState?.bus_voltages_pu ?? {};
+        const deadBusCount = Object.values(currentVoltages).filter((v: any) => v < 0.1).length;
+        const isoDeadCount = Object.values(isoVoltages).filter((v: any) => v < 0.1).length;
+        const restoredBusCount = flisrPhase === 'restored' ? Math.max(0, isoDeadCount - deadBusCount) : 0;
 
-      {/* Latest Prediction Cards (fault only) */}
-      <LatestPredictionCards fault={gridState?.fault} />
+        return (
+        <div className={`card py-3 px-5 ${
+          flisrPhase === 'restored'
+            ? 'bg-green-900/30 border-green-700'
+            : flisrPhase === 'isolated' || flisrPhase === 'restoring'
+              ? 'bg-amber-900/40 border-amber-600'
+              : 'bg-red-900/40 border-red-600'
+        }`}>
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center space-x-3">
+              <Shield className={`w-6 h-6 ${
+                flisrPhase === 'restored' ? 'text-green-400'
+                  : flisrPhase === 'isolated' ? 'text-amber-400'
+                    : 'text-red-400'
+              }`} />
+              <span className={`text-lg font-bold ${
+                flisrPhase === 'restored' ? 'text-green-400'
+                  : flisrPhase === 'isolated' ? 'text-amber-400'
+                    : 'text-red-400'
+              }`}>
+                {flisrPhase === 'restored'
+                  ? `RESTORED - ${restorationResult?.restoration_pct?.toFixed(0)}% via ${restorationResult?.strategy}`
+                  : flisrPhase === 'isolated'
+                    ? `ISOLATED - ${faultFeeder}, ${deEnergizedLoads.length} loads de-energized`
+                    : flisrPhase === 'isolating' || flisrPhase === 'restoring'
+                      ? `${flisrPhase.toUpperCase()}...`
+                      : `FAULT - ${faultBus}, ${faultType}`
+                }
+              </span>
+            </div>
+            <div className="flex items-center space-x-4 text-sm">
+              <div>
+                <span className="text-slate-400">Bus: </span>
+                <span className="text-white font-mono">{faultBus}</span>
+              </div>
+              <div>
+                <span className="text-slate-400">Type: </span>
+                <span className="text-white font-mono">{faultType}</span>
+              </div>
+              {deadBusCount > 0 && (
+                <div>
+                  <span className="text-slate-400">Affected buses: </span>
+                  <span className="text-red-400 font-mono font-bold">{deadBusCount}</span>
+                </div>
+              )}
+              {restoredBusCount > 0 && (
+                <div>
+                  <span className="text-slate-400">Buses restored: </span>
+                  <span className="text-green-400 font-mono font-bold">{restoredBusCount}/{isoDeadCount}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+        );
+      })()}
+
+      {/* Fault Detection Banner (diagnostics - hidden during FLISR) */}
+      {flisrPhase === 'idle' && <FaultBanner fault={gridState?.fault} />}
+
+      {/* Latest Prediction Cards (fault only, hidden during FLISR) */}
+      {flisrPhase === 'idle' && <LatestPredictionCards fault={gridState?.fault} />}
 
       {/* Main Grid Topology Viewer */}
       <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-4 gap-4">
@@ -981,6 +1769,9 @@ export default function Dashboard() {
             <MiniMap
               nodeColor={(node) => {
                 if (node.id.startsWith('__xfmr_')) return '#a855f7';
+                if (node.data?.isFlisrFaultBus) return '#ef4444';
+                if (node.data?.isDeEnergized && !node.data?.isRestoredNode) return '#6b7280';
+                if (node.data?.isRestoredNode) return '#3b82f6';
                 if (node.data?.faultHighlight) return '#ef4444';
                 return '#22c55e';
               }}
@@ -994,11 +1785,17 @@ export default function Dashboard() {
 
         {/* Side Panel */}
         <div className="space-y-3 overflow-y-auto">
-          <FaultInjectionPanel
-            topology={topology}
-            fault={gridState?.fault}
-          />
+          <FLISRPanel topology={topology} />
+          {flisrPhase === 'idle' && (
+            <FaultInjectionPanel
+              topology={topology}
+              fault={gridState?.fault}
+            />
+          )}
           <ConnectionTypesLegend />
+          {flisrPhase !== 'idle' && (
+            <SwitchStateTable switchStates={selfHealingGridState?.all_switch_states ?? null} />
+          )}
           <SelectedNodePanel node={selectedNode} />
           <NetworkStats topology={topology} />
         </div>
